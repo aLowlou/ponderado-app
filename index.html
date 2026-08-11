@@ -848,6 +848,11 @@ function renderCourseList(){
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
   
   let html = '';
+  // Declaradas aquí (nivel de función) para que los botones ▲▼ de más abajo
+  // también puedan acceder a ellas — antes vivían dentro del bloque `else`
+  // y por eso los clics fallaban en silencio con "folderNamesKeys is not defined".
+  let foldersMap = {};
+  let folderNamesKeys = [];
 
   html += `
     <div class="toolbar-panel">
@@ -871,14 +876,13 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    let foldersMap = {};
     appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
       foldersMap[f].push(c);
     });
 
-    let folderNamesKeys = Object.keys(foldersMap);
+    folderNamesKeys = Object.keys(foldersMap);
 
     if (appState.sortBy === 'name-asc') {
       folderNamesKeys.sort((a, b) => a.localeCompare(b));
