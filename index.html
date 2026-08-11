@@ -840,7 +840,7 @@ function renderFolderView(folderName) {
   });
 }
 
-/* --- Lista Principal con Botón de Añadir Carpeta y Control de Subir/Bajar --- */
+/* --- Lista Principal con Orden de Carpetas por Subir/Bajar --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
@@ -943,7 +943,6 @@ function renderCourseList(){
 
   document.getElementById('export-selected-btn').onclick = () => openExportModal();
 
-  // Botón para Añadir Carpeta vacía
   document.getElementById('new-folder-btn').onclick = async () => {
     let folderName = prompt("Nombre de la nueva carpeta (ej. Ciclo 8):");
     if (!folderName || !folderName.trim()) return;
@@ -954,6 +953,7 @@ function renderCourseList(){
     render();
   };
 
+  // Botones para mover carpetas enteras de posición
   content.querySelectorAll('.move-up-folder').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -1413,7 +1413,7 @@ function refreshRulerOnly(course){
 }
 
 /* ============================================================
-   ACTUALIZACIÓN DE RESULTADOS (Solución definitiva para el foco del input)
+   ACTUALIZACIÓN DE RESULTADOS
    ============================================================ */
 function updateResults(course){
   const panel = document.getElementById('results-panel');
@@ -1423,7 +1423,7 @@ function updateResults(course){
     panel.innerHTML = buildResultsHtml(course);
     wireResultsEvents(course);
   } else {
-    // Preservamos el valor exacto del input de nota mínima mientras el usuario escribe para que no pierda el foco ni salte el cursor
+    // Mantenemos la estructura pero actualizamos sin perder el foco ni la selección al escribir en la nota mínima
     const thresholdInput = document.getElementById('threshold-input');
     const currentTypingValue = thresholdInput ? thresholdInput.value : null;
     const isFocused = document.activeElement && document.activeElement.id === 'threshold-input';
@@ -1502,7 +1502,7 @@ function buildResultsHtml(course) {
     }
   }
 
-  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="number" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" step="any" min="0" max="${maxScale}" ${dis}></div>`;
+  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="text" inputmode="decimal" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" ${dis}></div>`;
   html += `</div>`;
   return html;
 }
@@ -1581,7 +1581,7 @@ async function init(){
 init();
 
 document.addEventListener('keydown', function(e) {
-    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && !appState.viewOnlyMode && e.target.id !== 'threshold-input' && e.target.id !== 'course-maxscale') {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && !appState.viewOnlyMode && e.target.id !== 'course-maxscale') {
         if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault(); 
             const inputs = Array.from(document.querySelectorAll('input[type="number"]:not(:disabled)'));
