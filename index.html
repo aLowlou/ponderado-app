@@ -210,21 +210,17 @@
   .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
   .save-flag.show{opacity:1;}
   
-  .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;cursor:grab;transition:border-color .15s;}
-  .course-row:active{cursor:grabbing;}
+  .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;transition:border-color .15s;}
   .course-row:hover{border-color:rgba(124,92,255,.4);}
   .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
   .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
 
-  /* --- Carpetas y Arrastre --- */
-  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; cursor: grab; }
-  .folder-container:active { cursor: grabbing; }
-  .folder-container.dragging { opacity: 0.4; }
+  /* --- Carpetas --- */
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; }
   .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
   .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
-  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); cursor: default; }
-  .course-row.dragging { opacity: 0.4; }
+  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 
   /* Modal selectivo */
@@ -237,7 +233,7 @@
 
 <script>
 /* ============================================================
-   MOTOR MATEMÁTICO & SUSTITUTORIO
+   MOTOR MATEMÁTICO & SUSTITUTORIO (Escala Dinámica)
    ============================================================ */
 function formatNum(num) { return Number(num.toFixed(4)); }
 
@@ -290,13 +286,14 @@ function hasPending(trabajos){ return trabajos.some(t => t.notas.length === 0 ||
 
 function solveNeeded(course) {
     const target = course.threshold;
+    const maxScale = course.maxScale || 20;
     const pendingReg = hasPending(course.trabajos);
     const pendingSusti = course.sustitutorio?.enabled && course.sustitutorio?.nota === null;
 
     if (!pendingReg && !pendingSusti) return null;
     if (getAnalysis(course, 0, 0).total >= target - 1e-9) return 0;
 
-    let lo = 0, hi = 20;
+    let lo = 0, hi = maxScale;
     for (let i = 0; i < 60; i++) {
         const mid = (lo + hi) / 2;
         let val = 0;
@@ -308,11 +305,11 @@ function solveNeeded(course) {
     }
     
     let checkVal = 0;
-    if (pendingReg && !pendingSusti) checkVal = getAnalysis(course, 20, 0).total;
-    else if (!pendingReg && pendingSusti) checkVal = getAnalysis(course, 0, 20).total;
-    else checkVal = getAnalysis(course, 20, 20).total;
+    if (pendingReg && !pendingSusti) checkVal = getAnalysis(course, maxScale, 0).total;
+    else if (!pendingReg && pendingSusti) checkVal = getAnalysis(course, 0, maxScale).total;
+    else checkVal = getAnalysis(course, maxScale, maxScale).total;
 
-    if (hi > 19.999 && checkVal < target - 1e-9) return null; 
+    if (hi > maxScale - 0.0001 && checkVal < target - 1e-9) return null; 
     return Math.ceil(hi * 100) / 100;
 }
 
@@ -326,6 +323,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     folder: folderName,
     orderIndex: 0,
     threshold: 10.5,
+    maxScale: 20,
     ownerId: ownerId || null,
     isPublic: false,
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
@@ -337,6 +335,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
 
 function migrateCourse(course){
   if (typeof course.threshold !== 'number') course.threshold = 10.5;
+  if (typeof course.maxScale !== 'number') course.maxScale = 20;
   if (!course.folder) course.folder = 'General';
   if (typeof course.orderIndex !== 'number') course.orderIndex = 0;
   if (!course.createdAt) course.createdAt = course.updatedAt || Date.now();
@@ -389,7 +388,7 @@ const appState = {
   quickCourse: defaultCourse('Cálculo rápido', null),
   loadingList: true,
   sortBy: 'custom',
-  folderSortBy: 'custom' // Ordenamiento independiente dentro de carpetas
+  folderSortBy: 'custom'
 };
 
 const Backend = {
@@ -592,7 +591,7 @@ async function registerEmail() {
 }
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.tab = 'saved'; }
 
-/* --- Modal Selector para Exportar en Lote --- */
+/* --- Modal Selectivo para Exportar en Lote --- */
 function openExportModal() {
   let modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -642,7 +641,7 @@ function openExportModal() {
   };
 }
 
-/* --- Vista Detallada de Carpeta con Ordenamiento Independiente --- */
+/* --- Vista de Carpeta Detallada --- */
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
   let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
@@ -669,7 +668,7 @@ function renderFolderView(folderName) {
       <div style="display:flex; align-items:center; gap:8px; flex:1;">
         <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar ciclo:</span>
         <select id="folder-sort-select" style="padding:6px 10px; font-size:12px;">
-          <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
+          <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
           <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modificación</option>
           <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
           <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
@@ -680,7 +679,10 @@ function renderFolderView(folderName) {
     </div>
 
     <div class="card" style="margin-bottom:16px;">
-      <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;">📁 ${escapeHtml(folderName)}</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;" id="folder-view-title-wrap">📁 <span id="folder-view-text">${escapeHtml(folderName)}</span></h2>
+        <button class="icon-btn" id="edit-folder-inside-btn" title="Editar nombre de carpeta">✏️</button>
+      </div>
       <p style="color:var(--text-dim); font-size:13px; margin:0;">Administra y ordena las asignaturas de este ciclo.</p>
     </div>
   `;
@@ -689,12 +691,16 @@ function renderFolderView(folderName) {
     html += `<div class="card empty"><p>Esta carpeta está vacía.</p></div>`;
   } else {
     html += `<div id="folder-courses-list">`;
-    folderCourses.forEach(c => {
+    folderCourses.forEach((c, idx) => {
       html += `
-        <div class="course-row" data-open="${c.id}" draggable="true" data-course-id="${c.id}" style="margin-bottom:10px;">
+        <div class="course-row" data-open="${c.id}" style="margin-bottom:10px;">
           <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
           <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
-          <div style="display:flex; gap:6px; align-items:center;">
+          <div style="display:flex; gap:4px; align-items:center;">
+            ${appState.folderSortBy === 'custom' ? `
+              <button class="icon-btn move-up-course" data-course-id="${c.id}" title="Subir" ${idx === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
+              <button class="icon-btn move-down-course" data-course-id="${c.id}" title="Bajar" ${idx === folderCourses.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
+            ` : ''}
             <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
             <button class="icon-btn" data-del="${c.id}">✕</button>
           </div>
@@ -708,10 +714,73 @@ function renderFolderView(folderName) {
 
   document.getElementById('folder-back-btn').onclick = () => { appState.activeFolderView = null; render(); loadList(); };
   
+  // Editar nombre dentro de la carpeta
+  document.getElementById('edit-folder-inside-btn').onclick = () => {
+    const textSpan = document.getElementById('folder-view-text');
+    let input = document.createElement('input');
+    input.type = 'text';
+    input.value = folderName;
+    input.style.cssText = "background:var(--card-inset); border:1px solid var(--a1); padding:4px 8px; border-radius:8px; color:white; font-size:18px; width:200px; font-family:var(--display); font-weight:700;";
+    textSpan.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const saveInside = async () => {
+      const newName = input.value.trim();
+      if (!newName || newName === folderName) { renderFolderView(folderName); return; }
+      let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+      for (const cMeta of fCourses) {
+        let fullC = await Backend.getCourse(cMeta.id);
+        if (fullC) { fullC.folder = newName; await Backend.saveCourse(fullC); }
+      }
+      appState.activeFolderView = newName;
+      loadList();
+    };
+    input.onblur = saveInside;
+    input.onkeydown = (ev) => { if (ev.key === 'Enter') saveInside(); };
+  };
+
   document.getElementById('folder-sort-select').onchange = (e) => {
     appState.folderSortBy = e.target.value;
     renderFolderView(folderName);
   };
+
+  // Botones de Mover Arriba / Abajo en Carpeta
+  content.querySelectorAll('.move-up-course').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute('data-course-id');
+      let ids = folderCourses.map(c => c.id);
+      let idx = ids.indexOf(cid);
+      if (idx > 0) {
+        let temp = ids[idx]; ids[idx] = ids[idx - 1]; ids[idx - 1] = temp;
+        for (let i = 0; i < ids.length; i++) {
+          let cObj = await Backend.getCourse(ids[i]);
+          if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
+        }
+        await loadList();
+        renderFolderView(folderName);
+      }
+    };
+  });
+
+  content.querySelectorAll('.move-down-course').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute('data-course-id');
+      let ids = folderCourses.map(c => c.id);
+      let idx = ids.indexOf(cid);
+      if (idx < ids.length - 1) {
+        let temp = ids[idx]; ids[idx] = ids[idx + 1]; ids[idx + 1] = temp;
+        for (let i = 0; i < ids.length; i++) {
+          let cObj = await Backend.getCourse(ids[i]);
+          if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
+        }
+        await loadList();
+        renderFolderView(folderName);
+      }
+    };
+  });
 
   document.getElementById('export-this-folder').onclick = async () => {
     let fullFolderData = [];
@@ -768,45 +837,9 @@ function renderFolderView(folderName) {
       dl.remove();
     };
   });
-
-  // Drag & Drop corregido para cursos en la carpeta
-  let draggedId = null;
-  const listEl = document.getElementById('folder-courses-list');
-  if (listEl) {
-    listEl.querySelectorAll('.course-row').forEach(row => {
-      row.addEventListener('dragstart', (e) => { draggedId = row.getAttribute('data-course-id'); row.classList.add('dragging'); e.stopPropagation(); });
-      row.addEventListener('dragend', () => { row.classList.remove('dragging'); });
-      row.addEventListener('dragover', (e) => e.preventDefault());
-      row.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        if (!draggedId) return;
-        const targetRow = e.target.closest('.course-row');
-        if (!targetRow) return;
-        const targetId = targetRow.getAttribute('data-course-id');
-        if (draggedId === targetId) return;
-
-        let ids = folderCourses.map(c => c.id);
-        let fromIdx = ids.indexOf(draggedId);
-        let toIdx = ids.indexOf(targetId);
-        ids.splice(fromIdx, 1);
-        ids.splice(toIdx, 0, draggedId);
-
-        for (let i = 0; i < ids.length; i++) {
-          let cObj = await Backend.getCourse(ids[i]);
-          if (cObj) {
-            cObj.orderIndex = i;
-            await Backend.saveCourse(cObj);
-          }
-        }
-        appState.folderSortBy = 'custom';
-        await loadList();
-        renderFolderView(folderName);
-      });
-    });
-  }
 }
 
-/* --- Renderizados de Lista Principal con Edición en Línea de Carpeta --- */
+/* --- Lista Principal con Sistema de Orden y Subir/Bajar Carpetas --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
@@ -818,7 +851,7 @@ function renderCourseList(){
       <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
         <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar:</span>
         <select id="sort-select" style="padding:6px 10px; font-size:12px;">
-          <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
+          <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
           <option value="updated-desc" ${appState.sortBy==='updated-desc'?'selected':''}>Última modificación</option>
           <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
           <option value="name-desc" ${appState.sortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
@@ -827,7 +860,7 @@ function renderCourseList(){
         </select>
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="io-btn" id="export-selected-btn" title="Exportar asignaturas seleccionadas">📤 Exportar</button>
+        <button class="io-btn" id="export-selected-btn" title="Exportar seleccionadas">📤 Exportar</button>
         <button class="io-btn" id="export-all-btn" title="Exportar todo">📤 Todo</button>
         <button class="io-btn" id="import-global-btn" title="Importar JSON">📥 Importar</button>
         <input type="file" id="global-file-input" accept=".json" multiple style="display:none">
@@ -856,23 +889,30 @@ function renderCourseList(){
       folders[f].push(c);
     });
 
+    let folderNamesKeys = Object.keys(folders);
+
     html += `<div id="main-folders-list">`;
-    for (const [folderName, courses] of Object.entries(folders)) {
+    folderNamesKeys.forEach((folderName, fIdx) => {
+      let courses = folders[folderName];
       html += `
-        <div class="folder-container" draggable="true" data-folder-name="${escapeAttr(folderName)}">
+        <div class="folder-container" data-folder-name="${escapeAttr(folderName)}">
           <div class="folder-header">
             <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
               <span class="folder-title">📁 <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
               <span style="font-size:12px; color:var(--text-dim); font-weight:normal;">(${courses.length})</span>
             </div>
-            <div style="display:flex; gap:6px; align-items:center;">
+            <div style="display:flex; gap:4px; align-items:center;">
+              ${appState.sortBy === 'custom' ? `
+                <button class="icon-btn move-up-folder" data-folder-name="${escapeAttr(folderName)}" title="Subir carpeta" ${fIdx === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
+                <button class="icon-btn move-down-folder" data-folder-name="${escapeAttr(folderName)}" title="Bajar carpeta" ${fIdx === folderNamesKeys.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
+              ` : ''}
               <button class="icon-btn folder-edit-btn" data-folder-target="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
               <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
             </div>
           </div>
           <div class="folder-content">
       `;
-      for (const c of courses){
+      courses.forEach(c => {
         html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
             <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
             <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
@@ -881,25 +921,70 @@ function renderCourseList(){
               <button class="icon-btn" data-del="${c.id}">✕</button>
             </div>
           </div>`;
-      }
+      });
       html += `</div></div>`;
-    }
+    });
     html += `</div>`;
   }
 
   html += `<button class="pill pill-primary block" id="new-course-btn" style="margin-top:16px;">+ Nuevo curso</button>`;
   content.innerHTML = html;
 
-  // Cambiar ordenamiento
   document.getElementById('sort-select').onchange = (e) => {
     appState.sortBy = e.target.value;
     renderCourseList();
   };
 
-  // Botón Exportar selectivo (abre el modal)
   document.getElementById('export-selected-btn').onclick = () => openExportModal();
 
-  // Edición fluida de nombre de carpeta con Textbox al presionar el lápiz
+  // Mover Carpeta Arriba / Abajo
+  content.querySelectorAll('.move-up-folder').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const fName = btn.getAttribute('data-folder-name');
+      let fKeys = folderNamesKeys;
+      let idx = fKeys.indexOf(fName);
+      if (idx > 0) {
+        let temp = fKeys[idx]; fKeys[idx] = fKeys[idx - 1]; fKeys[idx - 1] = temp;
+        let cIdx = 0;
+        for (let fn of fKeys) {
+          let fcList = appState.coursesIndex.filter(c => (c.folder || 'General') === fn);
+          for (let fc of fcList) {
+            let cObj = await Backend.getCourse(fc.id);
+            if (cObj) { cObj.orderIndex = cIdx++; await Backend.saveCourse(cObj); }
+          }
+        }
+        appState.sortBy = 'custom';
+        await loadList();
+        renderCourseList();
+      }
+    };
+  });
+
+  content.querySelectorAll('.move-down-folder').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const fName = btn.getAttribute('data-folder-name');
+      let fKeys = folderNamesKeys;
+      let idx = fKeys.indexOf(fName);
+      if (idx < fKeys.length - 1) {
+        let temp = fKeys[idx]; fKeys[idx] = fKeys[idx + 1]; fKeys[idx + 1] = temp;
+        let cIdx = 0;
+        for (let fn of fKeys) {
+          let fcList = appState.coursesIndex.filter(c => (c.folder || 'General') === fn);
+          for (let fc of fcList) {
+            let cObj = await Backend.getCourse(fc.id);
+            if (cObj) { cObj.orderIndex = cIdx++; await Backend.saveCourse(cObj); }
+          }
+        }
+        appState.sortBy = 'custom';
+        await loadList();
+        renderCourseList();
+      }
+    };
+  });
+
+  // Edición fluida de carpeta desde afuera
   content.querySelectorAll('.folder-edit-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -911,7 +996,6 @@ function renderCourseList(){
       input.type = 'text';
       input.value = oldName;
       input.style.cssText = "background:var(--card-inset); border:1px solid var(--a1); padding:4px 8px; border-radius:8px; color:white; font-size:15px; width:160px; font-family:var(--display); font-weight:700;";
-      
       textSpan.replaceWith(input);
       input.focus();
       input.select();
@@ -919,24 +1003,18 @@ function renderCourseList(){
       const saveNewName = async () => {
         const newName = input.value.trim();
         if (!newName || newName === oldName) { renderCourseList(); return; }
-
         let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === oldName);
         for (const cMeta of folderCourses) {
           let fullC = await Backend.getCourse(cMeta.id);
-          if (fullC) {
-            fullC.folder = newName;
-            await Backend.saveCourse(fullC);
-          }
+          if (fullC) { fullC.folder = newName; await Backend.saveCourse(fullC); }
         }
         loadList();
       };
-
       input.onblur = saveNewName;
       input.onkeydown = (ev) => { if (ev.key === 'Enter') saveNewName(); };
     };
   });
 
-  // Abrir carpeta al hacer click en su título
   content.querySelectorAll('[data-open-folder]').forEach(el => {
     el.onclick = () => {
       appState.activeFolderView = el.getAttribute('data-open-folder');
@@ -944,7 +1022,6 @@ function renderCourseList(){
     };
   });
 
-  // Exportar Todo
   document.getElementById('export-all-btn').onclick = async () => {
     let fullData = [];
     for (const cMeta of appState.coursesIndex) {
@@ -960,7 +1037,6 @@ function renderCourseList(){
     dl.remove();
   };
 
-  // Exportar Carpeta
   content.querySelectorAll('[data-export-folder]').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -981,7 +1057,6 @@ function renderCourseList(){
     };
   });
 
-  // Exportar Curso individual
   content.querySelectorAll('[data-export-course]').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -998,7 +1073,6 @@ function renderCourseList(){
     };
   });
 
-  // Importar global
   const globalFileIn = document.getElementById('global-file-input');
   document.getElementById('import-global-btn').onclick = () => globalFileIn.click();
   globalFileIn.onchange = async (e) => {
@@ -1049,46 +1123,6 @@ function renderCourseList(){
     const course = defaultCourse('Nuevo curso', appState.currentUser.uid);
     await Backend.saveCourse(course); appState.openCourse = course; render();
   };
-
-  // Drag & Drop funcional para reordenar carpetas
-  let draggedFolder = null;
-  const foldersListEl = document.getElementById('main-folders-list');
-  if (foldersListEl) {
-    foldersListEl.querySelectorAll('.folder-container').forEach(fEl => {
-      fEl.addEventListener('dragstart', (e) => { draggedFolder = fEl.getAttribute('data-folder-name'); fEl.classList.add('dragging'); e.stopPropagation(); });
-      fEl.addEventListener('dragend', () => { fEl.classList.remove('dragging'); });
-      fEl.addEventListener('dragover', (e) => e.preventDefault());
-      fEl.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        if (!draggedFolder) return;
-        const targetContainer = e.target.closest('.folder-container');
-        if (!targetContainer) return;
-        const targetFolder = targetContainer.getAttribute('data-folder-name');
-        if (draggedFolder === targetFolder) return;
-
-        let folderNames = Array.from(foldersListEl.querySelectorAll('.folder-container')).map(el => el.getAttribute('data-folder-name'));
-        let fromIdx = folderNames.indexOf(draggedFolder);
-        let toIdx = folderNames.indexOf(targetFolder);
-        folderNames.splice(fromIdx, 1);
-        folderNames.splice(toIdx, 0, draggedFolder);
-
-        let currentIndex = 0;
-        for (let fName of folderNames) {
-          let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
-          for (let fc of fCourses) {
-            let cObj = await Backend.getCourse(fc.id);
-            if (cObj) {
-              cObj.orderIndex = currentIndex++;
-              await Backend.saveCourse(cObj);
-            }
-          }
-        }
-        appState.sortBy = 'custom';
-        await loadList();
-        renderCourseList();
-      });
-    });
-  }
 }
 
 async function loadList(){
@@ -1099,7 +1133,7 @@ async function loadList(){
   if (appState.tab === 'saved' && !appState.openCourse && appState.activeFolderView === null) renderCourseList();
 }
 
-/* --- EDITOR DE CURSO --- */
+/* --- EDITOR DE CURSO (Con Escala de Nota Máxima y Nota Mínima Arreglada) --- */
 function renderEditorScreen(course, persist){
   const content = document.getElementById('tab-content');
   let html = '';
@@ -1125,13 +1159,17 @@ function renderEditorScreen(course, persist){
         </div>
       </div>
       <div class="card card-tight" style="margin-bottom: 24px; display:flex; gap:12px; flex-wrap:wrap;">
-        <div style="flex:2; min-width:200px;">
+        <div style="flex:2; min-width:180px;">
           <label class="f-label">Nombre del curso</label>
           <input type="text" class="title-input" id="course-name" value="${escapeAttr(course.name)}" placeholder="Ej. Control Automático I" ${appState.viewOnlyMode ? 'disabled' : ''}>
         </div>
-        <div style="flex:1; min-width:140px;">
+        <div style="flex:1; min-width:120px;">
           <label class="f-label">Carpeta / Ciclo</label>
           <input type="text" id="course-folder" value="${escapeAttr(course.folder || 'General')}" placeholder="Ej. Ciclo 7" style="background:var(--card-inset); border:1px solid var(--border); padding:10px; border-radius:12px; color:white; font-size:14px;" ${appState.viewOnlyMode ? 'disabled' : ''}>
+        </div>
+        <div style="flex:1; min-width:100px;">
+          <label class="f-label">Escala Máxima</label>
+          <input type="number" id="course-maxscale" value="${course.maxScale || 20}" min="1" step="0.5" style="background:var(--card-inset); border:1px solid var(--border); padding:10px; border-radius:12px; color:white; font-size:14px;" ${appState.viewOnlyMode ? 'disabled' : ''}>
         </div>
       </div>`;
   } else if (!appState.viewOnlyMode && !persist) {
@@ -1142,6 +1180,10 @@ function renderEditorScreen(course, persist){
            <button class="io-btn" id="export-quick-btn" style="padding:6px 12px; font-size:11px;">📤 Exportar</button>
            <button class="back-btn" id="reset-quick-btn">↺ Reiniciar</button>
         </div>
+      </div>
+      <div class="card card-tight" style="margin-bottom: 24px;">
+        <label class="f-label">Escala Máxima del Sistema</label>
+        <input type="number" id="course-maxscale" value="${course.maxScale || 20}" min="1" step="0.5" style="background:var(--card-inset); border:1px solid var(--border); padding:10px; border-radius:12px; color:white; font-size:14px;">
       </div>`;
   }
 
@@ -1170,6 +1212,16 @@ function renderEditorScreen(course, persist){
     document.getElementById('course-name').addEventListener('input', (e) => { course.name = e.target.value; debounceSave(course); });
     document.getElementById('course-folder').addEventListener('input', (e) => { course.folder = e.target.value.trim() || 'General'; debounceSave(course); });
     
+    document.getElementById('course-maxscale').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (!isNaN(v) && v > 0) {
+        course.maxScale = v;
+        if (course.threshold >= v) course.threshold = v / 2;
+        updateResults(course);
+        debounceSave(course);
+      }
+    });
+
     document.getElementById('export-btn').onclick = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(course, null, 2));
         const downloadAnchor = document.createElement('a');
@@ -1215,6 +1267,10 @@ function renderEditorScreen(course, persist){
 
   } else if (!appState.viewOnlyMode && !persist) {
     document.getElementById('reset-quick-btn').onclick = () => { appState.quickCourse = defaultCourse('Cálculo rápido'); render(); };
+    document.getElementById('course-maxscale').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (!isNaN(v) && v > 0) { appState.quickCourse.maxScale = v; updateResults(appState.quickCourse); }
+    });
     document.getElementById('export-quick-btn').onclick = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState.quickCourse, null, 2));
         const downloadAnchor = document.createElement('a');
@@ -1342,14 +1398,27 @@ function refreshRulerOnly(course){
 }
 
 /* ============================================================
-   ACTUALIZACIÓN DE RESULTADOS
+   ACTUALIZACIÓN DE RESULTADOS (Con Input Independiente para evitar perder foco)
    ============================================================ */
 function updateResults(course){
   const panel = document.getElementById('results-panel');
   if (!panel) return;
+
+  // Si ya existe el panel de resultados, solo actualizamos dinámicamente sus partes internas para no recrear el input de nota mínima
+  if (!panel.querySelector('.card')) {
+    panel.innerHTML = buildResultsHtml(course);
+    wireResultsEvents(course);
+  } else {
+    // Actualización inteligente sin destruir el input en uso
+    updateResultsContentOnly(course);
+  }
+}
+
+function buildResultsHtml(course) {
   const analysis = getAnalysis(course, 0, 0);
   const pending = hasPending(course.trabajos) || (course.sustitutorio?.enabled && course.sustitutorio?.nota === null);
   const dis = appState.viewOnlyMode ? 'disabled' : '';
+  const maxScale = course.maxScale || 20;
 
   let html = ``;
 
@@ -1368,7 +1437,7 @@ function updateResults(course){
     </div>
   `;
 
-  html += `<div class="card">`;
+  html += `<div class="card" id="results-inner-card">`;
   analysis.details.forEach(item => {
     const complete = item.t.notas.length > 0 && item.t.notas.every(n => n.value !== null);
     if (!complete) { html += `<div class="res-line"><span class="k">${escapeHtml(item.t.name||'Trabajo')} (${Number(item.t.percentage)||0}%)</span><span class="v">—</span></div>`; } 
@@ -1385,43 +1454,89 @@ function updateResults(course){
 
   if (!pending){
     const rounded = roundHalfUp(analysis.total); const passed = analysis.total >= course.threshold;
-    const pct = Math.max(0, Math.min(100, (analysis.total/20)*100)); const ringColor = passed ? 'var(--success)' : 'var(--danger)';
-    html += `<div class="ring-wrap"><div class="ring" style="background:conic-gradient(${ringColor} ${pct}%, rgba(255,255,255,.08) 0)"><div class="ring-inner"><div class="grade">${rounded}<small> /20</small></div></div></div><div class="raw-line">ponderado exacto: ${formatNum(analysis.total)}</div><div class="status-pill ${passed?'pass':'fail'}">${passed?'Aprobado':'Desaprobado'}</div></div>`;
+    const pct = Math.max(0, Math.min(100, (analysis.total/maxScale)*100)); const ringColor = passed ? 'var(--success)' : 'var(--danger)';
+    html += `<div class="ring-wrap"><div class="ring" style="background:conic-gradient(${ringColor} ${pct}%, rgba(255,255,255,.08) 0)"><div class="ring-inner"><div class="grade">${rounded}<small> /${maxScale}</small></div></div></div><div class="raw-line">ponderado exacto: ${formatNum(analysis.total)}</div><div class="status-pill ${passed?'pass':'fail'}">${passed?'Aprobado':'Desaprobado'}</div></div>`;
   } else {
     const needed = solveNeeded(course);
     if (needed === null){ html += `<div class="need-card"><div class="tag">Nota necesaria</div><div class="impossible">Matemáticamente Imposible.</div><p>Con las notas ya registradas, el máximo posible no llega a ${course.threshold}.</p></div>`; } 
-    else if (needed === 0) { html += `<div class="need-card" style="border-color: rgba(52,229,176,.3); background: rgba(52,229,176,.06);"><div class="tag" style="color: var(--success);">¡Curso Asegurado!</div><div class="need-val" style="background: linear-gradient(135deg, var(--success), #26A69A); -webkit-background-clip: text; background-clip: text; color: transparent;">0<small> /20</small></div><p>Con tu puntaje acumulado ya alcanzaste el <b>${course.threshold}</b>. Aprobarás incluso si sacas 0 en lo pendiente.</p></div>`; } 
+    else if (needed === 0) { html += `<div class="need-card" style="border-color: rgba(52,229,176,.3); background: rgba(52,229,176,.06);"><div class="tag" style="color: var(--success);">¡Curso Asegurado!</div><div class="need-val" style="background: linear-gradient(135deg, var(--success), #26A69A); -webkit-background-clip: text; background-clip: text; color: transparent;">0<small> /${maxScale}</small></div><p>Con tu puntaje acumulado ya alcanzaste el <b>${course.threshold}</b>. Aprobarás incluso si sacas 0 en lo pendiente.</p></div>`; } 
     else {
       let pendingNames = [];
       course.trabajos.forEach(t => { if (t.notas.length === 0 || t.notas.some(n => n.value === null)) pendingNames.push(t.name || 'Trabajo'); });
       if (course.sustitutorio?.enabled && course.sustitutorio?.nota === null) pendingNames.push("Examen Sustitutorio");
       
       let pendingString = pendingNames.length === 1 ? `<b>${escapeHtml(pendingNames[0])}</b>` : `<b>${pendingNames.slice(0,-1).map(escapeHtml).join('</b>, <b>')}</b> y <b>${escapeHtml(pendingNames[pendingNames.length-1])}</b>`;
-      html += `<div class="need-card"><div class="tag">Nota necesaria en lo pendiente</div><div class="need-val">${formatNum(needed)}<small> /20</small></div><p>Necesitas ${formatNum(needed)} en ${pendingString} para aprobar con ${course.threshold}.</p></div>`;
+      html += `<div class="need-card"><div class="tag">Nota necesaria en lo pendiente</div><div class="need-val">${formatNum(needed)}<small> /${maxScale}</small></div><p>Necesitas ${formatNum(needed)} en ${pendingString} para aprobar con ${course.threshold}.</p></div>`;
     }
   }
 
-  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="number" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" step="0.1" ${dis}></div>`;
+  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="number" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" step="0.1" min="0" max="${maxScale}" ${dis}></div>`;
   html += `</div>`;
+  return html;
+}
 
-  panel.innerHTML = html;
+function updateResultsContentOnly(course) {
+  const innerCard = document.getElementById('results-inner-card');
+  if (!innerCard) {
+    document.getElementById('results-panel').innerHTML = buildResultsHtml(course);
+    wireResultsEvents(course);
+    return;
+  }
+  // Guardamos si el input de nota mínima estaba enfocado
+  const activeElId = document.activeElement ? document.activeElement.id : null;
+  const selectionStart = activeElId === 'threshold-input' ? document.activeElement.selectionStart : null;
+  const selectionEnd = activeElId === 'threshold-input' ? document.activeElement.selectionEnd : null;
 
-  if(!appState.viewOnlyMode) {
-      document.getElementById('threshold-input').addEventListener('input', (e)=>{ const v = parseFloat(e.target.value); course.threshold = isNaN(v) ? course.threshold : v; updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); });
-      const sustiToggle = document.getElementById('susti-toggle');
-      if (sustiToggle) {
-          sustiToggle.addEventListener('change', (e) => {
-              if (e.target.checked) {
-                  const currentTotal = getAnalysis(course, 0, 0).total;
-                  if (currentTotal >= course.threshold) { if (!confirm(`Tu nota actual (${formatNum(currentTotal)}) ya es aprobatoria. ¿Activar de todas formas?`)) { e.target.checked = false; return; } } 
-                  else if (currentTotal < 8) { if (!confirm(`Recuerda que tu promedio (${formatNum(currentTotal)}) es menor a 8. ¿Continuar?`)) { e.target.checked = false; return; } }
-                  course.sustitutorio.enabled = true;
-              } else { course.sustitutorio.enabled = false; course.sustitutorio.nota = null; }
-              updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
-          });
-      }
-      const sustiVal = document.getElementById('susti-val');
-      if (sustiVal) { sustiVal.addEventListener('input', (e) => { const raw = e.target.value.trim(); course.sustitutorio.nota = raw === '' ? null : parseFloat(raw); updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); }); }
+  // Reconstruimos el contenido interno del card de resultados
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = buildResultsHtml(course);
+  document.getElementById('results-panel').innerHTML = tempDiv.innerHTML;
+  wireResultsEvents(course);
+
+  // Restauramos el foco si estaba en el input de nota mínima
+  if (activeElId === 'threshold-input') {
+    const newInp = document.getElementById('threshold-input');
+    if (newInp) {
+      newInp.focus();
+      if (selectionStart !== null) newInp.setSelectionRange(selectionStart, selectionEnd);
+    }
+  }
+}
+
+function wireResultsEvents(course) {
+  if(appState.viewOnlyMode) return;
+
+  const thresholdInp = document.getElementById('threshold-input');
+  if (thresholdInp) {
+    thresholdInp.addEventListener('input', (e)=>{ 
+      const v = parseFloat(e.target.value); 
+      course.threshold = isNaN(v) ? course.threshold : v; 
+      updateResultsContentOnly(course); 
+      if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); 
+    });
+  }
+
+  const sustiToggle = document.getElementById('susti-toggle');
+  if (sustiToggle) {
+      sustiToggle.addEventListener('change', (e) => {
+          if (e.target.checked) {
+              const currentTotal = getAnalysis(course, 0, 0).total;
+              if (currentTotal >= course.threshold) { if (!confirm(`Tu nota actual (${formatNum(currentTotal)}) ya es aprobatoria. ¿Activar de todas formas?`)) { e.target.checked = false; return; } } 
+              else if (currentTotal < (course.maxScale || 20) * 0.4) { if (!confirm(`Recuerda que tu promedio (${formatNum(currentTotal)}) es bajo. ¿Continuar?`)) { e.target.checked = false; return; } }
+              course.sustitutorio.enabled = true;
+          } else { course.sustitutorio.enabled = false; course.sustitutorio.nota = null; }
+          updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
+      });
+  }
+
+  const sustiVal = document.getElementById('susti-val');
+  if (sustiVal) { 
+    sustiVal.addEventListener('input', (e) => { 
+      const raw = e.target.value.trim(); 
+      course.sustitutorio.nota = raw === '' ? null : parseFloat(raw); 
+      updateResults(course); 
+      if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); 
+    }); 
   }
 }
 
@@ -1461,7 +1576,7 @@ async function init(){
 init();
 
 document.addEventListener('keydown', function(e) {
-    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && !appState.viewOnlyMode) {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && !appState.viewOnlyMode && e.target.id !== 'threshold-input' && e.target.id !== 'course-maxscale') {
         if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault(); 
             const inputs = Array.from(document.querySelectorAll('input[type="number"]:not(:disabled)'));
