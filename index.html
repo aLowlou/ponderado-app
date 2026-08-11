@@ -571,7 +571,7 @@ async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
-        await firebaseAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
     } catch(e) { alert(e.message); }
 }
 async function loginEmail() {
