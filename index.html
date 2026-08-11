@@ -224,11 +224,14 @@
   .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
   .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
 
-  /* --- Estilos para Carpetas --- */
-  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; }
-  .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: pointer; }
-  .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text); }
+  /* --- Estilos para Carpetas y Drag & Drop --- */
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; cursor: move; }
+  .folder-container.dragging { opacity: 0.4; }
+  .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
+  .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
   .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
+  .course-row.dragging { opacity: 0.4; }
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 </style>
 </head>
@@ -319,11 +322,12 @@ function solveNeeded(course) {
 function roundHalfUp(n){ return Math.floor(n + 0.5); }
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
 
-function defaultCourse(name, ownerId){
+function defaultCourse(name, ownerId, folderName = 'General'){
   return {
     id: uid(),
     name: name || 'Nuevo curso',
-    folder: 'General',
+    folder: folderName,
+    orderIndex: 0,
     threshold: 10.5,
     ownerId: ownerId || null,
     isPublic: false,
@@ -337,6 +341,7 @@ function defaultCourse(name, ownerId){
 function migrateCourse(course){
   if (typeof course.threshold !== 'number') course.threshold = 10.5;
   if (!course.folder) course.folder = 'General';
+  if (typeof course.orderIndex !== 'number') course.orderIndex = 0;
   if (!course.createdAt) course.createdAt = course.updatedAt || Date.now();
   if (!Array.isArray(course.trabajos)) course.trabajos = [];
   for (const t of course.trabajos){
@@ -383,9 +388,10 @@ const appState = {
   tab: 'saved',
   coursesIndex: [],
   openCourse: null,
+  activeFolderView: null, // Si tiene nombre, muestra solo esa carpeta
   quickCourse: defaultCourse('Cálculo rápido', null),
   loadingList: true,
-  sortBy: 'updated-desc' // Opciones: name-asc, name-desc, updated-desc, created-desc, grade-desc, grade-asc
+  sortBy: 'custom' // 'custom', 'updated-desc', 'name-asc', etc.
 };
 
 const Backend = {
@@ -400,6 +406,7 @@ const Backend = {
          id: d.id, 
          name: data.name || 'Sin nombre', 
          folder: data.folder || 'General',
+         orderIndex: typeof data.orderIndex === 'number' ? data.orderIndex : 0,
          updatedAt: data.updatedAt || 0,
          createdAt: data.createdAt || 0,
          totalGrade: getAnalysis(data, 0, 0).total
@@ -541,72 +548,213 @@ function render(){
     </div>
     <div id="tab-content"></div>
   `;
-  document.getElementById('tab-saved').onclick = () => { appState.tab='saved'; appState.openCourse=null; render(); loadList(); };
-  document.getElementById('tab-quick').onclick = () => { appState.tab='quick'; render(); };
+  document.getElementById('tab-saved').onclick = () => { appState.tab='saved'; appState.openCourse=null; appState.activeFolderView=null; render(); loadList(); };
+  document.getElementById('tab-quick').onclick = () => { appState.tab='quick'; appState.activeFolderView=null; render(); };
 
   if (appState.tab === 'saved'){
     if (appState.openCourse) renderEditorScreen(appState.openCourse, true);
+    else if (appState.activeFolderView !== null) renderFolderView(appState.activeFolderView);
     else renderCourseList();
   } else {
     renderEditorScreen(appState.quickCourse, false);
   }
 }
 
-/* --- Funciones de Autenticación con Control de Sesión --- */
+/* --- Autenticación --- */
 function toggleAuthForm() {
     const login = document.getElementById('login-form');
     const reg = document.getElementById('register-form');
     if (login.style.display === 'none') { login.style.display = 'flex'; reg.style.display = 'none'; }
     else { login.style.display = 'none'; reg.style.display = 'flex'; }
 }
-
 async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
-        const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
-        await firebaseAuth.setPersistence(persistence);
-        const provider = new firebase.auth.GoogleAuthProvider();
-        await firebaseAuth.signInWithPopup(provider);
+        await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
+        await firebaseAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
     } catch(e) { alert(e.message); }
 }
-
 async function loginEmail() {
     try {
         const e = document.getElementById('auth-email').value; 
         const p = document.getElementById('auth-pass').value;
         const rememberMe = document.getElementById('rememberMe').checked;
-        const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
-        await firebaseAuth.setPersistence(persistence);
+        await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
         await firebaseAuth.signInWithEmailAndPassword(e, p);
     } catch(err) { alert(err.message); }
 }
-
 async function registerEmail() {
     try {
         const e = document.getElementById('reg-email').value; 
         const p = document.getElementById('reg-pass').value;
         const rememberMe = document.getElementById('rememberMeReg').checked;
-        const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
-        await firebaseAuth.setPersistence(persistence);
+        await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
         await firebaseAuth.createUserWithEmailAndPassword(e, p);
     } catch(err) { alert(err.message); }
 }
+function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.tab = 'saved'; }
 
-function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.tab = 'saved'; }
+/* --- Vista Detallada de Carpeta --- */
+function renderFolderView(folderName) {
+  const content = document.getElementById('tab-content');
+  let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
 
-/* --- Renderizados de Lista con Carpetas y Ordenamiento --- */
+  // Ordenar segun criterio
+  folderCourses.sort((a, b) => {
+    if (appState.sortBy === 'name-asc') return a.name.localeCompare(b.name);
+    if (appState.sortBy === 'name-desc') return b.name.localeCompare(a.name);
+    if (appState.sortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
+    if (appState.sortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
+    if (appState.sortBy === 'created-desc') return b.createdAt - a.createdAt;
+    if (appState.sortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
+    return (a.orderIndex || 0) - (b.orderIndex || 0);
+  });
+
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <button class="back-btn" id="folder-back-btn">‹ Volver a Mis Cursos</button>
+      <div style="display:flex; gap:8px;">
+        <button class="io-btn" id="export-this-folder">📤 Exportar carpeta</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;">📁 ${escapeHtml(folderName)}</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin:0;">Administra y ordena las asignaturas de este ciclo.</p>
+    </div>
+  `;
+
+  if (folderCourses.length === 0) {
+    html += `<div class="card empty"><p>Esta carpeta está vacía.</p></div>`;
+  } else {
+    html += `<div id="folder-courses-list">`;
+    folderCourses.forEach(c => {
+      html += `
+        <div class="course-row" data-open="${c.id}" draggable="true" data-course-id="${c.id}" style="margin-bottom:10px;">
+          <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
+          <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
+            <button class="icon-btn" data-del="${c.id}">✕</button>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<button class="pill pill-primary block" id="add-to-folder-btn" style="margin-top:16px;">+ Añadir asignatura a esta carpeta</button>`;
+  content.innerHTML = html;
+
+  document.getElementById('folder-back-btn').onclick = () => { appState.activeFolderView = null; render(); loadList(); };
+  
+  // Exportar esta carpeta específica
+  document.getElementById('export-this-folder').onclick = async () => {
+    let fullFolderData = [];
+    for (const cMeta of folderCourses) {
+      const fullC = await Backend.getCourse(cMeta.id);
+      if (fullC) fullFolderData.push(fullC);
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullFolderData, null, 2));
+    const dl = document.createElement('a');
+    dl.setAttribute("href", dataStr);
+    dl.setAttribute("download", `carpeta_${folderName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_ponderado.json`);
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+  };
+
+  // Añadir asignatura directamente a esta carpeta
+  document.getElementById('add-to-folder-btn').onclick = async () => {
+    const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+    await Backend.saveCourse(course);
+    appState.openCourse = course;
+    render();
+  };
+
+  // Eventos de abrir y borrar curso dentro de la carpeta
+  content.querySelectorAll('[data-open]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]')) return;
+      content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
+      const course = await Backend.getCourse(el.getAttribute('data-open'));
+      if (course){ migrateCourse(course); appState.openCourse = course; render(); }
+    });
+  });
+
+  content.querySelectorAll('[data-del]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('¿Eliminar este curso?')) return;
+      await Backend.deleteCourse(el.getAttribute('data-del'));
+      loadList().then(() => renderFolderView(folderName));
+    });
+  });
+
+  content.querySelectorAll('[data-export-course]').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute('data-export-course');
+      const fullC = await Backend.getCourse(cid);
+      if (!fullC) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullC, null, 2));
+      const dl = document.createElement('a');
+      dl.setAttribute("href", dataStr);
+      dl.setAttribute("download", `${fullC.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_ponderado.json`);
+      document.body.appendChild(dl);
+      dl.click();
+      dl.remove();
+    };
+  });
+
+  // Drag & Drop manual dentro de la carpeta
+  let draggedId = null;
+  const listEl = document.getElementById('folder-courses-list');
+  if (listEl) {
+    listEl.querySelectorAll('.course-row').forEach(row => {
+      row.addEventListener('dragstart', (e) => { draggedId = row.getAttribute('data-course-id'); row.classList.add('dragging'); });
+      row.addEventListener('dragend', () => { row.classList.remove('dragging'); });
+      row.addEventListener('dragover', (e) => e.preventDefault());
+      row.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        if (!draggedId) return;
+        const targetRow = e.target.closest('.course-row');
+        if (!targetRow) return;
+        const targetId = targetRow.getAttribute('data-course-id');
+        if (draggedId === targetId) return;
+
+        let ids = folderCourses.map(c => c.id);
+        let fromIdx = ids.indexOf(draggedId);
+        let toIdx = ids.indexOf(targetId);
+        ids.splice(fromIdx, 1);
+        ids.splice(toIdx, 0, draggedId);
+
+        // Guardar nuevo orden personalizado en Firebase
+        for (let i = 0; i < ids.length; i++) {
+          let cObj = await Backend.getCourse(ids[i]);
+          if (cObj) {
+            cObj.orderIndex = i;
+            await Backend.saveCourse(cObj);
+          }
+        }
+        await loadList();
+        renderFolderView(folderName);
+      });
+    });
+  }
+}
+
+/* --- Renderizados de Lista Principal con Carpetas y Orden --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
   
   let html = '';
 
-  // Toolbar superior: Filtro de orden y acciones globales en lote
   html += `
     <div class="toolbar-panel">
       <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
         <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar:</span>
         <select id="sort-select" style="padding:6px 10px; font-size:12px;">
+          <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
           <option value="updated-desc" ${appState.sortBy==='updated-desc'?'selected':''}>Última modificación</option>
           <option value="created-desc" ${appState.sortBy==='created-desc'?'selected':''}>Fecha de creación</option>
           <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
@@ -626,7 +774,6 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    // Ordenar elementos según appState.sortBy
     let sortedList = [...appState.coursesIndex];
     sortedList.sort((a, b) => {
       if (appState.sortBy === 'name-asc') return a.name.localeCompare(b.name);
@@ -634,10 +781,10 @@ function renderCourseList(){
       if (appState.sortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
       if (appState.sortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
       if (appState.sortBy === 'created-desc') return b.createdAt - a.createdAt;
-      return b.updatedAt - a.updatedAt; // default updated-desc
+      if (appState.sortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
+      return (a.orderIndex || 0) - (b.orderIndex || 0); // custom
     });
 
-    // Agrupar por carpetas
     let folders = {};
     sortedList.forEach(c => {
       let f = c.folder || 'General';
@@ -645,12 +792,19 @@ function renderCourseList(){
       folders[f].push(c);
     });
 
+    html += `<div id="main-folders-list">`;
     for (const [folderName, courses] of Object.entries(folders)) {
       html += `
-        <div class="folder-container">
+        <div class="folder-container" draggable="true" data-folder-name="${escapeAttr(folderName)}">
           <div class="folder-header">
-            <div class="folder-title">📁 ${escapeHtml(folderName)} <span style="font-size:12px; color:var(--text-dim); font-weight:normal;">(${courses.length})</span></div>
-            <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
+            <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
+              <span class="folder-title">📁 ${escapeHtml(folderName)}</span>
+              <span style="font-size:12px; color:var(--text-dim); font-weight:normal;">(${courses.length})</span>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="icon-btn" data-edit-folder="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
+              <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
+            </div>
           </div>
           <div class="folder-content">
       `;
@@ -658,23 +812,55 @@ function renderCourseList(){
         html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
             <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
             <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
-            <button class="icon-btn" data-del="${c.id}">✕</button>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
+              <button class="icon-btn" data-del="${c.id}">✕</button>
+            </div>
           </div>`;
       }
       html += `</div></div>`;
     }
+    html += `</div>`;
   }
 
   html += `<button class="pill pill-primary block" id="new-course-btn" style="margin-top:16px;">+ Nuevo curso</button>`;
   content.innerHTML = html;
 
-  // Eventos de ordenamiento
+  // Cambiar ordenamiento
   document.getElementById('sort-select').onchange = (e) => {
     appState.sortBy = e.target.value;
     renderCourseList();
   };
 
-  // Evento Exportar Todo
+  // Abrir carpeta al hacer click en su título
+  content.querySelectorAll('[data-open-folder]').forEach(el => {
+    el.onclick = () => {
+      appState.activeFolderView = el.getAttribute('data-open-folder');
+      render();
+    };
+  });
+
+  // Editar nombre de carpeta desde afuera
+  content.querySelectorAll('[data-edit-folder]').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const oldName = btn.getAttribute('data-edit-folder');
+      const newName = prompt("Nuevo nombre para la carpeta:", oldName);
+      if (!newName || !newName.trim() || newName.trim() === oldName) return;
+      
+      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === oldName);
+      for (const cMeta of folderCourses) {
+        let fullC = await Backend.getCourse(cMeta.id);
+        if (fullC) {
+          fullC.folder = newName.trim();
+          await Backend.saveCourse(fullC);
+        }
+      }
+      loadList();
+    };
+  });
+
+  // Exportar Todo
   document.getElementById('export-all-btn').onclick = async () => {
     let fullData = [];
     for (const cMeta of appState.coursesIndex) {
@@ -690,7 +876,7 @@ function renderCourseList(){
     dl.remove();
   };
 
-  // Eventos Exportar Carpeta específica
+  // Exportar Carpeta
   content.querySelectorAll('[data-export-folder]').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -711,7 +897,24 @@ function renderCourseList(){
     };
   });
 
-  // Evento Importar masivo / unitario
+  // Exportar Curso individual desde afuera
+  content.querySelectorAll('[data-export-course]').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const cid = btn.getAttribute('data-export-course');
+      const fullC = await Backend.getCourse(cid);
+      if (!fullC) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullC, null, 2));
+      const dl = document.createElement('a');
+      dl.setAttribute("href", dataStr);
+      dl.setAttribute("download", `${fullC.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_ponderado.json`);
+      document.body.appendChild(dl);
+      dl.click();
+      dl.remove();
+    };
+  });
+
+  // Importar global
   const globalFileIn = document.getElementById('global-file-input');
   document.getElementById('import-global-btn').onclick = () => globalFileIn.click();
   globalFileIn.onchange = async (e) => {
@@ -743,7 +946,7 @@ function renderCourseList(){
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-del]')) return;
+      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]')) return;
       content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
       const course = await Backend.getCourse(el.getAttribute('data-open'));
       if (course){ migrateCourse(course); appState.openCourse = course; render(); }
@@ -762,17 +965,58 @@ function renderCourseList(){
     const course = defaultCourse('Nuevo curso', appState.currentUser.uid);
     await Backend.saveCourse(course); appState.openCourse = course; render();
   };
+
+  // Drag & Drop para ordenar carpetas enteras
+  let draggedFolder = null;
+  const foldersListEl = document.getElementById('main-folders-list');
+  if (foldersListEl) {
+    foldersListEl.querySelectorAll('.folder-container').forEach(fEl => {
+      fEl.addEventListener('dragstart', (e) => { draggedFolder = fEl.getAttribute('data-folder-name'); fEl.classList.add('dragging'); });
+      fEl.addEventListener('dragend', () => { fEl.classList.remove('dragging'); });
+      fEl.addEventListener('dragover', (e) => e.preventDefault());
+      fEl.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        if (!draggedFolder) return;
+        const targetContainer = e.target.closest('.folder-container');
+        if (!targetContainer) return;
+        const targetFolder = targetContainer.getAttribute('data-folder-name');
+        if (draggedFolder === targetFolder) return;
+
+        // Reordenar asignando orden personalizado a los cursos de las carpetas afectadas
+        let folderNames = Array.from(foldersListEl.querySelectorAll('.folder-container')).map(el => el.getAttribute('data-folder-name'));
+        let fromIdx = folderNames.indexOf(draggedFolder);
+        let toIdx = folderNames.indexOf(targetFolder);
+        folderNames.splice(fromIdx, 1);
+        folderNames.splice(toIdx, 0, draggedFolder);
+
+        let currentIndex = 0;
+        for (let fName of folderNames) {
+          let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
+          for (let fc of fCourses) {
+            let cObj = await Backend.getCourse(fc.id);
+            if (cObj) {
+              cObj.orderIndex = currentIndex++;
+              await Backend.saveCourse(cObj);
+            }
+          }
+        }
+        appState.sortBy = 'custom';
+        await loadList();
+        renderCourseList();
+      });
+    });
+  }
 }
 
 async function loadList(){
   appState.loadingList = true;
-  if (appState.tab === 'saved' && !appState.openCourse) renderCourseList();
+  if (appState.tab === 'saved' && !appState.openCourse && appState.activeFolderView === null) renderCourseList();
   try{ appState.coursesIndex = await Backend.listCourses(); }catch(e){ appState.coursesIndex = []; }
   appState.loadingList = false;
-  if (appState.tab === 'saved' && !appState.openCourse) renderCourseList();
+  if (appState.tab === 'saved' && !appState.openCourse && appState.activeFolderView === null) renderCourseList();
 }
 
-/* --- EDITOR & GRID LAYOUT --- */
+/* --- EDITOR DE CURSO --- */
 function renderEditorScreen(course, persist){
   const content = document.getElementById('tab-content');
   let html = '';
@@ -785,7 +1029,7 @@ function renderEditorScreen(course, persist){
   if (persist && !appState.viewOnlyMode){
     html += `
       <div class="header-actions">
-        <button class="back-btn" id="back-btn">‹ Mis cursos</button>
+        <button class="back-btn" id="back-btn">‹ Volver</button>
         <div class="action-buttons-group">
            <button class="io-btn" id="export-btn" title="Exportar curso">📤 Exportar</button>
            <button class="io-btn" id="import-btn" title="Importar datos">📥 Importar</button>
@@ -833,7 +1077,13 @@ function renderEditorScreen(course, persist){
   content.innerHTML = html;
 
   if (persist && !appState.viewOnlyMode){
-    document.getElementById('back-btn').onclick = () => { appState.openCourse = null; appState.tab='saved'; render(); loadList(); };
+    document.getElementById('back-btn').onclick = () => { 
+      const activeFolder = course.folder;
+      appState.openCourse = null; 
+      appState.tab='saved'; 
+      if (appState.activeFolderView !== null) renderFolderView(activeFolder);
+      else { render(); loadList(); }
+    };
     document.getElementById('course-name').addEventListener('input', (e) => { course.name = e.target.value; debounceSave(course); });
     document.getElementById('course-folder').addEventListener('input', (e) => { course.folder = e.target.value.trim() || 'General'; debounceSave(course); });
     
