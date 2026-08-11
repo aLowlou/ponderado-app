@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Ponderado — Dashboard</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-firestore-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-auth-compat.min.js"></script>
+
+<style>
+  :root{
+    --bg: #070a14;
+    --card: #141a2e;
+    --card-inset: #0d1220;
+    --border: rgba(255,255,255,.07);
+    --border-strong: rgba(255,255,255,.14);
+    --text: #F4F6FB;
+    --text-dim: #8D95AC;
+    --text-faint: #4E5670;
+    --a1: #7C5CFF;
+    --a2: #35C7F2;
+    --grad: linear-gradient(135deg, var(--a1), var(--a2));
+    --success: #34E5B0;
+    --warn: #FFB454;
+    --danger: #FF6B81;
+    --r-card: 26px;
+    --r-pill: 999px;
+    --r-input: 16px;
+    --display: 'Outfit', 'Inter', sans-serif;
+    --sans: 'Inter', -apple-system, sans-serif;
+    --mono: 'SFMono-Regular', Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(1200px 500px at 50% -10%, rgba(124,92,255,.16), transparent 60%), var(--bg);
+    color:var(--text); font-family:var(--sans); min-height:100vh;
+    -webkit-font-smoothing:antialiased; padding-bottom:56px;
+  }
+  
+  #app{max-width:540px;margin:0 auto;padding:20px 16px 40px; transition: max-width 0.4s ease, width 0.4s ease;}
+  
+  @media (min-width: 900px) {
+    #app { width: fit-content; max-width: 96%; padding: 40px 32px 48px; }
+    .editor-container { display: flex; align-items: flex-start; gap: 28px; }
+    .editor-left { display: flex; flex-direction: column; min-width: 340px; }
+    .editor-right { width: 380px; flex-shrink: 0; position: sticky; top: 24px; }
+  }
+
+  .trabajos-grid { display: flex; flex-direction: column; gap: 16px; }
+  @media (min-width: 900px) {
+    .trabajos-grid { flex-direction: row; flex-wrap: wrap; }
+    .trabajo { width: 340px; flex-shrink: 0; }
+  }
+
+  input[type=number]::-webkit-inner-spin-button, 
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  input:disabled, button:disabled { opacity: 0.6; cursor: not-allowed !important; }
+
+  /* ---------- Branding & Topbar ---------- */
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-bottom: 28px; 
+    margin-top: 10px;
+    gap: 10px;
+  }
+  .brand { grid-column: 2; text-align: center; }
+  .brand h1 {
+    font-family:var(--display); font-size:36px; font-weight:800; margin:0; letter-spacing:-0.5px;
+    background: linear-gradient(135deg, #FFFFFF, #8D95AC); -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .brand h1::after { content: '.'; color: var(--a1); -webkit-text-fill-color: var(--a1); }
+  
+  .user-badge-wrap { grid-column: 3; display: flex; justify-content: flex-end; }
+  .user-badge {
+      display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: var(--r-pill); font-size: 12px; cursor: pointer; color: var(--text-dim);
+      transition: all 0.2s;
+  }
+  .user-badge:hover { border-color: var(--danger); color: var(--danger); }
+  .user-badge .email {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 70px; /* Previene que desborde en móviles pequeños */
+  }
+  @media (min-width: 480px) { .user-badge .email { max-width: 140px; } }
+
+  /* ---------- Auth Screen ---------- */
+  .auth-container { max-width: 360px; margin: 40px auto 0; text-align: center; }
+  .auth-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-card); padding: 32px 24px; }
+  .auth-box h2 { margin: 0 0 8px; font-family: var(--display); font-size: 22px; }
+  .auth-box p { color: var(--text-dim); font-size: 13px; margin: 0 0 24px; line-height: 1.5; }
+  .divider { display: flex; align-items: center; text-align: center; color: var(--text-faint); font-size: 11px; margin: 20px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
+  .divider:not(:empty)::before { margin-right: .25em; }
+  .divider:not(:empty)::after { margin-left: .25em; }
+  .btn-google { background: white; color: #333; width: 100%; border-radius: var(--r-pill); padding: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: none; font-size: 14px; }
+  .auth-form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+  .auth-form input { background: var(--card-inset); border: 1px solid var(--border); padding: 12px 14px; border-radius: 12px; color: white; }
+  .auth-toggle { font-size: 12px; color: var(--a2); cursor: pointer; margin-top: 16px; display: inline-block; }
+
+  /* ---------- Segmented tabs ---------- */
+  .tabs{display:flex;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-pill);padding:4px;margin-bottom:20px;}
+  .tab-btn{flex:1;padding:10px 8px;text-align:center;border:none;background:transparent;color:var(--text-dim); font-family:var(--sans);font-weight:700;font-size:12.5px;letter-spacing:.2px;border-radius:var(--r-pill);cursor:pointer;transition:all .18s;}
+  .tab-btn.active{background:var(--grad);color:#070a14;}
+
+  /* ---------- Cards & Elements ---------- */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;margin-bottom:16px; box-shadow:0 12px 30px -14px rgba(0,0,0,.55);}
+  .card-tight{padding:16px 18px;}
+  .empty{text-align:center;padding:40px 18px;color:var(--text-dim);}
+  .empty .glyph{font-size:28px;margin-bottom:10px;opacity:.7;}
+  .empty p{margin:4px 0;font-size:13px;line-height:1.6;}
+  .empty b{color:var(--text);}
+
+  .pill{border:none;border-radius:var(--r-pill);font-family:var(--sans);font-weight:700;font-size:13.5px; padding:13px 20px;cursor:pointer;transition:filter .15s, transform .1s;}
+  .pill:active{transform:scale(.97);}
+  .pill-primary{background:var(--grad);color:#070a14;}
+  .pill-primary:hover{filter:brightness(1.08);}
+  .pill-dashed{background:transparent;color:var(--a2);border:1.5px dashed rgba(53,199,242,.4);}
+  .pill-dashed:hover{background:rgba(53,199,242,.06);}
+  .pill.block{width:100%;}
+  .pill.small{padding:8px 14px;font-size:12px;}
+
+  label.f-label{display:block;font-family:var(--mono);font-size:10px;color:var(--text-faint);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
+  input[type=text], input[type=number], input[type=password]{ width:100%;background:var(--card-inset);border:1px solid transparent;border-radius:var(--r-input); color:var(--text);font-family:var(--sans);font-size:14.5px;padding:11px 14px;transition:border-color .15s; }
+  input:focus{outline:none;border-color:rgba(124,92,255,.55);}
+  input.title-input{font-family:var(--display);font-size:19px;font-weight:600;background:transparent;padding:6px 2px;}
+
+  .ruler{display:flex;height:12px;border-radius:var(--r-pill);overflow:hidden;background:var(--card-inset);margin:12px 0 8px;gap:2px;}
+  .ruler .seg{height:100%;border-radius:2px;transition:width .2s;}
+  .ruler-legend{display:flex;flex-wrap:wrap;gap:7px 14px;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);}
+  .ruler-legend .dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+  .weight-warn{font-family:var(--sans);font-size:11.5px;color:var(--warn);margin-top:8px;}
+
+  .trabajo{background:var(--card-inset);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:0;}
+  .trabajo-head{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+  input.t-name{font-family:var(--display);font-size:14.5px;font-weight:600;flex:1.5;background:var(--card);}
+  .pct-wrap{display:flex;align-items:center;background:var(--card);border-radius:var(--r-input);padding:0 10px 0 0;flex:.8;}
+  input.t-pct{text-align:right;font-family:var(--mono);background:transparent;padding-right:2px;}
+  .pct-sign{font-family:var(--mono);color:var(--text-dim);font-size:13px;}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 12px; background:var(--card);border-radius:16px;}
+  .toggle-row .lbl{font-size:12px;color:var(--text-dim);line-height:1.4;}
+  .toggle-row .lbl b{color:var(--text);}
+  .switch{position:relative;width:42px;height:24px;flex-shrink:0;cursor:pointer;margin-left:10px;}
+  .switch input{opacity:0;width:0;height:0;position:absolute;}
+  .switch .track{position:absolute;inset:0;background:rgba(255,255,255,.12);border-radius:20px;transition:background .18s;}
+  .switch .knob{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--text-dim);transition:transform .18s, background .18s;}
+  .switch input:checked + .track{background:var(--grad);}
+  .switch input:checked + .track .knob{transform:translateX(18px);background:#070a14;}
+
+  .notas-list{display:flex;flex-direction:column;gap:7px;margin-bottom:10px;}
+  .nota-row{display:flex;align-items:center;gap:8px;}
+  .nota-row .idx{font-family:var(--mono);font-size:10.5px;color:var(--text-faint);width:16px;flex-shrink:0;}
+  input.n-val{font-family:var(--mono);flex:1;background:var(--card);}
+  input.n-val.is-pending{box-shadow:inset 0 0 0 1.5px var(--warn);color:var(--warn);}
+  input.n-val.is-dropped{box-shadow:inset 0 0 0 1.5px var(--danger);color:var(--text-faint);text-decoration:line-through;}
+  .icon-btn{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;padding:6px;border-radius:10px;}
+  .icon-btn:hover{color:var(--danger);background:rgba(255,107,129,.08);}
+
+  .trabajo-foot{display:flex;justify-content:space-between;align-items:center;margin-top:2px;}
+  .avg-tag{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);}
+  .avg-tag b{color:var(--text);}
+
+  /* ---------- Results ---------- */
+  .res-line{display:flex;justify-content:space-between;align-items:baseline;padding:7px 2px;font-size:13px;border-bottom:1px solid var(--border);}
+  .res-line:last-child{border-bottom:none;}
+  .res-line .k{color:var(--text-dim);}
+  .res-line .v{font-family:var(--mono);font-weight:600;}
+
+  .ring-wrap{display:flex;flex-direction:column;align-items:center;padding:18px 0 6px;}
+  .ring{width:150px;height:150px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+  .ring-inner{width:120px;height:120px;border-radius:50%;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .ring-inner .grade{font-family:var(--display);font-size:38px;font-weight:800;line-height:1;}
+  .ring-inner .grade small{font-size:14px;color:var(--text-dim);font-weight:500;}
+  .raw-line{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);}
+  .status-pill{margin-top:10px;font-family:var(--sans);font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:6px 16px;border-radius:var(--r-pill);}
+  .status-pill.pass{background:rgba(52,229,176,.14);color:var(--success);}
+  .status-pill.fail{background:rgba(255,107,129,.14);color:var(--danger);}
+
+  .need-card{margin-top:4px;border-radius:20px;padding:18px;border:1px solid rgba(255,180,84,.3);background:rgba(255,180,84,.06);text-align:center;}
+  .need-card .tag{font-family:var(--mono);font-size:10.5px;color:var(--warn);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;}
+  .need-val{font-family:var(--display);font-size:34px;font-weight:800;background:linear-gradient(135deg,var(--warn),#FF8A65);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .need-val small{font-size:14px;color:var(--text-dim);font-weight:500;-webkit-text-fill-color:var(--text-dim);}
+  .need-card p{font-size:13.5px;color:var(--text-dim);margin:10px 0 0;line-height:1.55;}
+  .impossible{color:var(--danger);font-size:13.5px;font-weight:700;}
+
+  .threshold-row{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;font-size:12px;color:var(--text-dim);}
+  .threshold-row input{text-align:center;font-family:var(--mono); width: 100px !important;}
+
+  /* --- Banner de Cálculo Rápido Renovado --- */
+  .quick-banner{
+    display:flex; align-items:center; justify-content:space-between;
+    background: rgba(141, 149, 172, 0.08); border: 1px solid rgba(141, 149, 172, 0.15);
+    border-radius: 18px; padding: 12px 18px; margin-bottom: 24px;
+  }
+  .qb-text{ display:flex; align-items:center; font-size:13px; color:var(--text-dim); font-weight:500; font-family:var(--sans); }
+  .qb-text svg { color: var(--a1); opacity: 0.9; margin-right: 8px;}
+
+  /* --- Elementos de Compartir --- */
+  .header-actions { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .share-btn { display: flex; align-items: center; gap: 6px; background: rgba(53, 199, 242, 0.1); border: 1px solid rgba(53, 199, 242, 0.3); color: var(--a2); padding: 8px 14px; border-radius: var(--r-pill); font-size: 12px; cursor: pointer; font-weight: 600;}
+  .share-btn:hover { background: rgba(53, 199, 242, 0.2); }
+  .read-only-banner { background: rgba(255, 180, 84, 0.1); border: 1px solid rgba(255, 180, 84, 0.3); color: var(--warn); padding: 12px; border-radius: 16px; text-align: center; font-size: 13px; margin-bottom: 24px; }
+  
+  .back-btn{background:var(--card);border:1px solid var(--border);color:var(--text-dim);border-radius:var(--r-pill); padding:9px 15px;font-size:12.5px;cursor:pointer;font-weight:600;}
+  .back-btn:hover{color:var(--text);border-color:var(--border-strong);}
+  .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
+  .save-flag.show{opacity:1;}
+  
+  .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s;}
+  .course-row:hover{border-color:rgba(124,92,255,.4);}
+  .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
+  .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================================================
+   MOTOR MATEMÁTICO & SUSTITUTORIO
+   ============================================================ */
+function formatNum(num) { return Number(num.toFixed(4)); }
+
+function getPartialAvgLabel(t) {
+  const entered = t.notas.filter(n => n.value !== null).map(n => n.value);
+  if (entered.length === 0) return '?';
+  let eCopy = [...entered];
+  if (t.dropLowest && eCopy.length > 1) eCopy.splice(eCopy.indexOf(Math.min(...eCopy)), 1);
+  return formatNum(eCopy.reduce((a,b)=>a+b, 0) / eCopy.length);
+}
+
+function trabajoAverage(trabajo, x){
+  const notas = trabajo.notas;
+  if (notas.length === 0) return x; 
+  let vals = notas.map(n => n.value === null ? x : n.value);
+  if (trabajo.dropLowest && vals.length > 1){
+    const minIdx = vals.indexOf(Math.min(...vals));
+    vals = vals.slice(0, minIdx).concat(vals.slice(minIdx+1));
+  }
+  return vals.reduce((a,b)=>a+b, 0) / vals.length;
+}
+
+function getAnalysis(course, x_reg = 0, x_susti = 0) {
+    let baseAvgs = course.trabajos.map(t => ({ t, avg: trabajoAverage(t, x_reg), isTarget: false, finalAvg: 0 }));
+    let targetId = null;
+    
+    if (course.sustitutorio && course.sustitutorio.enabled && baseAvgs.length > 0) {
+        let sorted = [...baseAvgs].sort((a, b) => {
+            if (Math.abs(a.avg - b.avg) > 1e-9) return a.avg - b.avg;
+            return (Number(b.t.percentage)||0) - (Number(a.t.percentage)||0);
+        });
+        targetId = sorted[0].t.id;
+    }
+
+    const actualSustiVal = course.sustitutorio?.nota !== null ? course.sustitutorio.nota : x_susti;
+    let total = 0;
+
+    for (const item of baseAvgs) {
+        item.finalAvg = item.avg;
+        if (targetId && item.t.id === targetId) {
+            item.isTarget = true;
+            item.finalAvg = Math.max(item.avg, actualSustiVal);
+        }
+        total += item.finalAvg * ((Number(item.t.percentage)||0) / 100);
+    }
+    return { total, details: baseAvgs, targetId };
+}
+
+function hasPending(trabajos){ return trabajos.some(t => t.notas.length === 0 || t.notas.some(n => n.value === null)); }
+
+function solveNeeded(course) {
+    const target = course.threshold;
+    const pendingReg = hasPending(course.trabajos);
+    const pendingSusti = course.sustitutorio?.enabled && course.sustitutorio?.nota === null;
+
+    if (!pendingReg && !pendingSusti) return null;
+    if (getAnalysis(course, 0, 0).total >= target - 1e-9) return 0;
+
+    let lo = 0, hi = 20;
+    for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        let val = 0;
+        if (pendingReg && !pendingSusti) val = getAnalysis(course, mid, 0).total;
+        else if (!pendingReg && pendingSusti) val = getAnalysis(course, 0, mid).total;
+        else val = getAnalysis(course, mid, mid).total;
+
+        if (val >= target) hi = mid; else lo = mid;
+    }
+    
+    let checkVal = 0;
+    if (pendingReg && !pendingSusti) checkVal = getAnalysis(course, 20, 0).total;
+    else if (!pendingReg && pendingSusti) checkVal = getAnalysis(course, 0, 20).total;
+    else checkVal = getAnalysis(course, 20, 20).total;
+
+    if (hi > 19.999 && checkVal < target - 1e-9) return null; 
+    return Math.ceil(hi * 100) / 100;
+}
+
+function roundHalfUp(n){ return Math.floor(n + 0.5); }
+function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+
+function defaultCourse(name, ownerId){
+  return {
+    id: uid(),
+    name: name || 'Nuevo curso',
+    threshold: 10.5,
+    ownerId: ownerId || null,
+    isPublic: false,
+    trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
+    sustitutorio: { enabled: false, nota: null },
+    updatedAt: Date.now()
+  };
+}
+
+function migrateCourse(course){
+  if (typeof course.threshold !== 'number') course.threshold = 10.5;
+  if (!Array.isArray(course.trabajos)) course.trabajos = [];
+  for (const t of course.trabajos){
+    if (typeof t.dropLowest !== 'boolean') t.dropLowest = false;
+    if (!Array.isArray(t.notas)) t.notas = [];
+  }
+  if (!course.sustitutorio) course.sustitutorio = { enabled: false, nota: null };
+  if (typeof course.isPublic !== 'boolean') course.isPublic = false;
+}
+
+/* ============================================================
+   CONFIGURACIÓN DE FIREBASE (AUTH Y FIRESTORE)
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyCfi3Oa4HmEoPHVntMi1jvTwkoO_-l9PCU",
+  authDomain: "ponderado.firebaseapp.com",
+  projectId: "ponderado",
+  storageBucket: "ponderado.firebasestorage.app",
+  messagingSenderId: "553283926902",
+  appId: "1:553283926902:web:57e8d91ef3fc4484371857",
+  measurementId: "G-81V9PJEM05"
+};
+
+let firestoreDb = null; 
+let firebaseAuth = null;
+let firebaseAvailable = false;
+
+try {
+  if (typeof firebase !== 'undefined' && firebaseConfig.apiKey && !String(firebaseConfig.apiKey).startsWith('PEGA_')){
+    firebase.initializeApp(firebaseConfig);
+    firestoreDb = firebase.firestore();
+    firebaseAuth = firebase.auth();
+    firebaseAvailable = true;
+  }
+} catch(e){ console.error(e); }
+
+/* ============================================================
+   CAPA DE ALMACENAMIENTO (FIREBASE GLOBAL)
+   ============================================================ */
+const appState = {
+  currentUser: null,
+  authLoading: true,
+  viewOnlyMode: false,
+  tab: 'saved',
+  coursesIndex: [],
+  openCourse: null,
+  quickCourse: defaultCourse('Cálculo rápido', null),
+  loadingList: true
+};
+
+const Backend = {
+  async listCourses(){
+    if (!appState.currentUser || !firebaseAvailable) return [];
+    const snap = await firestoreDb.collection('cursos')
+          .where('ownerId', '==', appState.currentUser.uid)
+          .get();
+    const list = snap.docs.map(d => ({ id: d.id, name: d.data().name, updatedAt: d.data().updatedAt || 0 }));
+    list.sort((a,b)=>b.updatedAt-a.updatedAt);
+    return list;
+  },
+  async getCourse(id){
+    if (!firebaseAvailable) return null;
+    const doc = await firestoreDb.collection('cursos').doc(id).get();
+    if (!doc.exists) return null;
+    return Object.assign({ id }, doc.data());
+  },
+  async saveCourse(course){
+    if (!firebaseAvailable || appState.viewOnlyMode) return;
+    course.updatedAt = Date.now();
+    const data = Object.assign({}, course);
+    delete data.id;
+    await firestoreDb.collection('cursos').doc(course.id).set(data);
+  },
+  async deleteCourse(id){
+    if (!firebaseAvailable) return;
+    await firestoreDb.collection('cursos').doc(id).delete();
+  }
+};
+
+let saveTimer = null;
+function debounceSave(course){
+  if (appState.viewOnlyMode) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => persistCourse(course), 450);
+}
+async function persistCourse(course){
+  try{ await Backend.saveCourse(course); flashSaved(); }
+  catch(e){ flashSaved(true); console.error(e); }
+}
+function flashSaved(isError){
+  const flag = document.getElementById('save-flag');
+  if (!flag) return;
+  flag.textContent = isError ? 'ERROR AL GUARDAR' : 'GUARDADO ✓';
+  flag.style.color = isError ? 'var(--danger)' : 'var(--success)';
+  flag.classList.add('show');
+  clearTimeout(flashSaved._t);
+  flashSaved._t = setTimeout(() => flag.classList.remove('show'), 1300);
+}
+
+/* ============================================================
+   RENDER PRINCIPAL
+   ============================================================ */
+function render(){
+  const app = document.getElementById('app');
+  let topBar = `<div class="topbar">
+      <div></div>
+      <div class="brand" style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+  <img src="logo.png" alt="Logo" style="height: 38px; width: auto; object-fit: contain;">
+  <h1 style="margin: 0;">Ponderado</h1>
+</div>
+      <div class="user-badge-wrap">
+        ${appState.currentUser && !appState.viewOnlyMode ? `
+        <div class="user-badge" onclick="if(confirm('¿Seguro que deseas cerrar sesión?')) logout()" title="Cerrar sesión">
+            <span class="email">${escapeHtml(appState.currentUser.displayName || appState.currentUser.email.split('@')[0])}</span>
+            <span style="font-size:14px">🚪</span>
+        </div>` : ''}
+      </div>
+    </div>`;
+
+  // Modo de Solo Lectura (Viendo curso de otro)
+  if (appState.viewOnlyMode && appState.openCourse) {
+      app.innerHTML = topBar + `<div id="tab-content"></div>`;
+      renderEditorScreen(appState.openCourse, true);
+      return;
+  }
+
+  // Pantalla de Autenticación
+  if (!appState.currentUser && appState.tab === 'saved') {
+      if (!firebaseAvailable) {
+          app.innerHTML = topBar + `
+            <div class="auth-container">
+              <div class="auth-box">
+                <h2>Casi listo...</h2>
+                <p>Para usar el guardado en la nube y los enlaces compartidos, debes configurar las credenciales de Firebase en el código fuente.</p>
+                <button class="pill pill-dashed block" onclick="appState.tab='quick'; render();">Usar Cálculo Rápido local</button>
+              </div>
+            </div>`;
+          return;
+      }
+
+      app.innerHTML = topBar + `
+        <div class="auth-container">
+          <div class="auth-box">
+            <h2>Bienvenido</h2>
+            <p>Inicia sesión con tu correo personal o institucional para guardar tus cursos de forma segura.</p>
+            
+            <button class="btn-google" onclick="loginGoogle()">
+              <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Continuar con Google
+            </button>
+            
+            <div class="divider">O usa tu correo</div>
+            
+            <div class="auth-form" id="login-form">
+                <input type="email" id="auth-email" placeholder="Correo institucional o personal">
+                <input type="password" id="auth-pass" placeholder="Contraseña">
+                <button class="pill pill-primary block" onclick="loginEmail()">Entrar</button>
+                <span class="auth-toggle" onclick="toggleAuthForm()">¿No tienes cuenta? Regístrate</span>
+            </div>
+            
+            <div class="auth-form" id="register-form" style="display:none;">
+                <input type="email" id="reg-email" placeholder="Nuevo correo">
+                <input type="password" id="reg-pass" placeholder="Crea una contraseña">
+                <button class="pill pill-primary block" onclick="registerEmail()">Crear cuenta</button>
+                <span class="auth-toggle" onclick="toggleAuthForm()">Ya tengo cuenta</span>
+            </div>
+            
+            <div style="margin-top:24px;">
+                <button class="pill pill-dashed block" onclick="appState.tab='quick'; render();">Usar Cálculo Rápido (sin guardar)</button>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+  }
+
+  app.innerHTML = topBar + `
+    <div class="tabs">
+      <button class="tab-btn ${appState.tab==='saved'?'active':''}" id="tab-saved">MIS CURSOS</button>
+      <button class="tab-btn ${appState.tab==='quick'?'active':''}" id="tab-quick">CÁLCULO RÁPIDO</button>
+    </div>
+    <div id="tab-content"></div>
+  `;
+  document.getElementById('tab-saved').onclick = () => { appState.tab='saved'; appState.openCourse=null; render(); loadList(); };
+  document.getElementById('tab-quick').onclick = () => { appState.tab='quick'; render(); };
+
+  if (appState.tab === 'saved'){
+    if (appState.openCourse) renderEditorScreen(appState.openCourse, true);
+    else renderCourseList();
+  } else {
+    renderEditorScreen(appState.quickCourse, false);
+  }
+}
+
+/* --- Funciones de Autenticación --- */
+function toggleAuthForm() {
+    const login = document.getElementById('login-form');
+    const reg = document.getElementById('register-form');
+    if (login.style.display === 'none') { login.style.display = 'flex'; reg.style.display = 'none'; }
+    else { login.style.display = 'none'; reg.style.display = 'flex'; }
+}
+function loginGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    firebaseAuth.signInWithPopup(provider).catch(e => alert(e.message));
+}
+function loginEmail() {
+    const e = document.getElementById('auth-email').value; const p = document.getElementById('auth-pass').value;
+    firebaseAuth.signInWithEmailAndPassword(e, p).catch(err => alert(err.message));
+}
+function registerEmail() {
+    const e = document.getElementById('reg-email').value; const p = document.getElementById('reg-pass').value;
+    firebaseAuth.createUserWithEmailAndPassword(e, p).catch(err => alert(err.message));
+}
+function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.tab = 'saved'; }
+
+/* --- Renderizados de Lista --- */
+function renderCourseList(){
+  const content = document.getElementById('tab-content');
+  if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
+  let html = '';
+  if (appState.coursesIndex.length === 0){
+    html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
+  } else {
+    for (const c of appState.coursesIndex){
+      html += `<div class="course-row" data-open="${c.id}">
+          <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
+          <div class="meta">Actualizado ${timeAgo(c.updatedAt)}</div></div>
+          <button class="icon-btn" data-del="${c.id}">✕</button>
+        </div>`;
+    }
+  }
+  html += `<button class="pill pill-primary block" id="new-course-btn">+ Nuevo curso</button>`;
+  content.innerHTML = html;
+
+  content.querySelectorAll('[data-open]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-del]')) return;
+      content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
+      const course = await Backend.getCourse(el.getAttribute('data-open'));
+      if (course){ migrateCourse(course); appState.openCourse = course; render(); }
+    });
+  });
+  content.querySelectorAll('[data-del]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('¿Eliminar este curso guardado? Esta acción no se puede deshacer.')) return;
+      await Backend.deleteCourse(el.getAttribute('data-del')); loadList();
+    });
+  });
+  document.getElementById('new-course-btn').onclick = async () => {
+    const course = defaultCourse('Nuevo curso', appState.currentUser.uid);
+    await Backend.saveCourse(course); appState.openCourse = course; render();
+  };
+}
+
+async function loadList(){
+  appState.loadingList = true;
+  if (appState.tab === 'saved' && !appState.openCourse) renderCourseList();
+  try{ appState.coursesIndex = await Backend.listCourses(); }catch(e){ appState.coursesIndex = []; }
+  appState.loadingList = false;
+  if (appState.tab === 'saved' && !appState.openCourse) renderCourseList();
+}
+
+/* --- EDITOR & GRID LAYOUT --- */
+function renderEditorScreen(course, persist){
+  const content = document.getElementById('tab-content');
+  let html = '';
+
+  if (appState.viewOnlyMode) {
+      html += `<div class="read-only-banner">👀 Estás viendo la calculadora de otra persona en Modo Solo Lectura. No puedes hacer cambios.</div>`;
+      html += `<div class="back-row"><button class="pill pill-primary" onclick="window.location.href=window.location.pathname">Ir a mi propia calculadora</button></div>`;
+  }
+
+  if (persist && !appState.viewOnlyMode){
+    html += `
+      <div class="header-actions">
+        <button class="back-btn" id="back-btn">‹ Mis cursos</button>
+        <div style="display:flex; gap:12px; align-items:center;">
+           <button class="share-btn" id="share-btn">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+             ${course.isPublic ? 'Enlace activado' : 'Compartir notas'}
+           </button>
+           <span class="save-flag" id="save-flag">GUARDADO ✓</span>
+        </div>
+      </div>
+      <div class="card card-tight" style="margin-bottom: 24px;">
+        <label class="f-label">Nombre del curso</label>
+        <input type="text" class="title-input" id="course-name" value="${escapeAttr(course.name)}" placeholder="Ej. Control Automático I" ${appState.viewOnlyMode ? 'disabled' : ''}>
+      </div>`;
+  } else if (!appState.viewOnlyMode && !persist) {
+    html += `
+      <div class="quick-banner">
+        <span class="qb-text"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="14.01"></line><line x1="12" y1="14" x2="12" y2="14.01"></line><line x1="8" y1="14" x2="8" y2="14.01"></line><line x1="16" y1="18" x2="16" y2="18.01"></line><line x1="12" y1="18" x2="12" y2="18.01"></line><line x1="8" y1="18" x2="8" y2="18.01"></line></svg>Modo borrador — No se guardarán los datos</span>
+        <button class="back-btn" id="reset-quick-btn">↺ Reiniciar</button>
+      </div>`;
+  }
+
+  html += `
+    <div class="editor-container">
+       <div class="editor-left">
+          <div id="trabajos-panel"></div>
+          ${!appState.viewOnlyMode ? `<button class="pill pill-dashed block" id="add-trabajo-btn" style="margin-bottom:24px;">+ Añadir trabajo</button>` : ''}
+       </div>
+       <div class="editor-right">
+          <div id="results-panel"></div>
+       </div>
+    </div>
+  `;
+
+  content.innerHTML = html;
+
+  if (persist && !appState.viewOnlyMode){
+    document.getElementById('back-btn').onclick = () => { appState.openCourse = null; appState.tab='saved'; render(); loadList(); };
+    document.getElementById('course-name').addEventListener('input', (e) => { course.name = e.target.value; debounceSave(course); });
+    
+    // Lógica de Compartir
+    document.getElementById('share-btn').onclick = () => {
+        if (!course.isPublic) {
+            if(confirm("¿Permitir que cualquier persona con el enlace vea tus notas de este curso? (Solo lectura)")) {
+                course.isPublic = true; persistCourse(course); document.getElementById('share-btn').innerHTML = 'Enlace activado';
+                alert("Enlace público creado:\n\n" + window.location.origin + window.location.pathname + "?view=" + course.id);
+            }
+        } else {
+            prompt("Copia este enlace para compartir tus notas:", window.location.origin + window.location.pathname + "?view=" + course.id);
+            if(confirm("¿Quieres volver a hacer privado este curso? El enlace dejará de funcionar.")) { course.isPublic = false; persistCourse(course); document.getElementById('share-btn').innerHTML = 'Compartir notas';}
+        }
+    };
+
+  } else if (!appState.viewOnlyMode && !persist) {
+    document.getElementById('reset-quick-btn').onclick = () => { appState.quickCourse = defaultCourse('Cálculo rápido'); render(); };
+  }
+
+  if (!appState.viewOnlyMode) {
+      document.getElementById('add-trabajo-btn').onclick = () => {
+        course.trabajos.push({ id: uid(), name: 'Trabajo '+(course.trabajos.length+1), percentage: 0, dropLowest:false, notas: [] });
+        renderTrabajos(course, persist); updateResults(course); if (persist) debounceSave(course);
+      };
+  }
+
+  renderTrabajos(course, persist);
+  updateResults(course);
+}
+
+const PALETTE = ['#7C5CFF','#35C7F2','#34E5B0','#FFB454','#FF6B81','#C792EA','#5AD1E6'];
+
+function renderTrabajos(course, persist){
+  const panel = document.getElementById('trabajos-panel');
+  const pctSum = course.trabajos.reduce((a,t)=>a+(Number(t.percentage)||0),0);
+
+  let html = '';
+  if (course.trabajos.length > 1){
+    html += `<div class="ruler">`;
+    course.trabajos.forEach((t,i)=>{
+      const w = Math.max(0, Number(t.percentage)||0);
+      html += `<div class="seg" style="width:${w}%;background:${PALETTE[i%PALETTE.length]}"></div>`;
+    });
+    html += `</div><div class="ruler-legend" style="margin-bottom:16px;">`;
+    course.trabajos.forEach((t,i)=>{
+      html += `<span><span class="dot" style="background:${PALETTE[i%PALETTE.length]}"></span>${escapeHtml(t.name||'—')} ${Number(t.percentage)||0}%</span>`;
+    });
+    html += `</div>`;
+    if (Math.abs(pctSum-100) > 0.01) html += `<div class="weight-warn" style="margin-bottom:16px;">⚠ Los porcentajes suman ${pctSum}%, no 100%.</div>`;
+  }
+
+  if (course.trabajos.length === 0){ html += `<div class="empty"><p>Añade al menos un trabajo.</p></div>`; }
+
+  html += `<div class="trabajos-grid">`;
+
+  course.trabajos.forEach((t) => {
+    const avgLabel = getPartialAvgLabel(t);
+    const dis = appState.viewOnlyMode ? 'disabled' : '';
+    html += `
+      <div class="trabajo" data-t="${t.id}">
+        <div class="trabajo-head">
+          <input type="text" class="t-name" data-role="t-name" value="${escapeAttr(t.name)}" placeholder="Nombre del trabajo" ${dis}>
+          <div class="pct-wrap"><input type="number" class="t-pct" data-role="t-pct" value="${t.percentage}" min="0" max="100" step="0.1" ${dis}><span class="pct-sign">%</span></div>
+          ${!appState.viewOnlyMode ? `<button class="icon-btn" data-role="t-remove" title="Eliminar trabajo">✕</button>` : ''}
+        </div>
+        <div class="toggle-row">
+          <span class="lbl">Eliminar la <b>nota más baja</b></span>
+          <label class="switch"><input type="checkbox" data-role="t-drop" ${t.dropLowest?'checked':''} ${dis}><span class="track"><span class="knob"></span></span></label>
+        </div>
+        <div class="notas-list" data-role="notas-list">
+          ${t.notas.map((n,ni)=>renderNotaRow(t,n,ni, dis)).join('')}
+        </div>
+        <div class="trabajo-foot">
+          ${!appState.viewOnlyMode ? `<button class="pill pill-dashed small" data-role="add-nota">+ nota</button>` : '<div></div>'}
+          <span class="avg-tag">promedio: <b>${avgLabel}</b></span>
+        </div>
+      </div>`;
+  });
+
+  html += `</div>`;
+  panel.innerHTML = html;
+  if(!appState.viewOnlyMode) wireTrabajoEvents(course, persist);
+}
+
+function renderNotaRow(t, n, ni, dis){
+  const notasCopy = t.notas.map(x=>x.value);
+  let droppedIdx = -1;
+  if (t.dropLowest && notasCopy.length>1 && notasCopy.every(v=>v!==null)) droppedIdx = notasCopy.indexOf(Math.min(...notasCopy));
+  const isPending = n.value === null;
+  const isDropped = ni === droppedIdx;
+  return `
+    <div class="nota-row" data-n="${n.id}">
+      <span class="idx">${ni+1}.</span>
+      <input type="number" class="n-val ${isPending?'is-pending':''} ${isDropped?'is-dropped':''}" data-role="n-val" value="${n.value===null?'':n.value}" placeholder="pendiente" step="0.01" ${dis}>
+      ${!appState.viewOnlyMode ? `<button class="icon-btn" data-role="n-remove" title="Quitar nota">✕</button>` : ''}
+    </div>`;
+}
+
+function wireTrabajoEvents(course, persist){
+  const panel = document.getElementById('trabajos-panel');
+  panel.querySelectorAll('.trabajo').forEach(trEl => {
+    const tid = trEl.getAttribute('data-t');
+    const trabajo = course.trabajos.find(x=>x.id===tid);
+
+    trEl.querySelector('[data-role="t-name"]').addEventListener('input', (e)=>{ trabajo.name = e.target.value; if (persist) debounceSave(course); updateResults(course); });
+    trEl.querySelector('[data-role="t-pct"]').addEventListener('input', (e)=>{ trabajo.percentage = e.target.value === '' ? 0 : parseFloat(e.target.value); updateResults(course); refreshRulerOnly(course); if (persist) debounceSave(course); });
+    trEl.querySelector('[data-role="t-remove"]')?.addEventListener('click', ()=>{ course.trabajos = course.trabajos.filter(x=>x.id!==tid); renderTrabajos(course, persist); updateResults(course); if (persist) debounceSave(course); });
+    trEl.querySelector('[data-role="t-drop"]').addEventListener('input', (e)=>{ trabajo.dropLowest = e.target.checked; renderTrabajos(course, persist); updateResults(course); if (persist) debounceSave(course); });
+    trEl.querySelector('[data-role="add-nota"]')?.addEventListener('click', ()=>{ trabajo.notas.push({ id: uid(), value: null }); renderTrabajos(course, persist); updateResults(course); if (persist) debounceSave(course); });
+    
+    trEl.querySelectorAll('[data-role="n-val"]').forEach((inp, ni) => {
+      inp.addEventListener('input', (e)=>{
+        const raw = e.target.value.trim(); trabajo.notas[ni].value = raw === '' ? null : parseFloat(raw);
+        updateResults(course); trEl.querySelector('.avg-tag b').textContent = getPartialAvgLabel(trabajo); if (persist) debounceSave(course);
+      });
+    });
+    trEl.querySelectorAll('[data-role="n-remove"]').forEach((btn, ni) => {
+      btn.addEventListener('click', ()=>{ trabajo.notas.splice(ni,1); renderTrabajos(course, persist); updateResults(course); if (persist) debounceSave(course); });
+    });
+  });
+}
+
+function refreshRulerOnly(course){
+  const ruler = document.querySelector('.ruler'); if (!ruler) return;
+  const segs = ruler.querySelectorAll('.seg');
+  course.trabajos.forEach((t,i)=>{ if (segs[i]) segs[i].style.width = Math.max(0, Number(t.percentage)||0) + '%'; });
+  const pctSum = course.trabajos.reduce((a,t)=>a+(Number(t.percentage)||0),0);
+  let warn = document.querySelector('.weight-warn');
+  if (Math.abs(pctSum-100) > 0.01){
+    if (!warn){ warn = document.createElement('div'); warn.className='weight-warn'; document.querySelector('.ruler-legend').after(warn); }
+    warn.textContent = `⚠ Los porcentajes suman ${pctSum}%, no 100%.`;
+  } else if (warn) warn.remove();
+}
+
+/* ============================================================
+   ACTUALIZACIÓN DE RESULTADOS
+   ============================================================ */
+function updateResults(course){
+  const panel = document.getElementById('results-panel');
+  if (!panel) return;
+  const analysis = getAnalysis(course, 0, 0);
+  const pending = hasPending(course.trabajos) || (course.sustitutorio?.enabled && course.sustitutorio?.nota === null);
+  const dis = appState.viewOnlyMode ? 'disabled' : '';
+
+  let html = ``;
+
+  html += `
+    <div class="card card-tight" style="margin-bottom:16px; border:1px dashed rgba(124,92,255,.5); background:rgba(124,92,255,.03);">
+      <div class="toggle-row" style="margin:0; padding:0; background:transparent;">
+        <span class="lbl"><b>Examen Sustitutorio</b><br><small style="color:var(--text-dim)">Reemplaza el promedio más bajo</small></span>
+        <label class="switch"><input type="checkbox" id="susti-toggle" ${course.sustitutorio?.enabled?'checked':''} ${dis}><span class="track"><span class="knob"></span></span></label>
+      </div>
+      ${course.sustitutorio?.enabled ? `
+        <div class="nota-row" style="margin-top:16px;">
+          <span class="idx" style="width:auto; margin-right:8px; font-size:12px; font-family:var(--sans); font-weight:600;">Nota:</span>
+          <input type="number" id="susti-val" class="n-val ${course.sustitutorio.nota===null?'is-pending':''}" value="${course.sustitutorio.nota===null?'':course.sustitutorio.nota}" placeholder="pendiente" step="0.01" ${dis}>
+        </div>
+      ` : ''}
+    </div>
+  `;
+
+  html += `<div class="card">`;
+  analysis.details.forEach(item => {
+    const complete = item.t.notas.length > 0 && item.t.notas.every(n => n.value !== null);
+    if (!complete) { html += `<div class="res-line"><span class="k">${escapeHtml(item.t.name||'Trabajo')} (${Number(item.t.percentage)||0}%)</span><span class="v">—</span></div>`; } 
+    else {
+       const pct = (Number(item.t.percentage)||0)/100;
+       const originalContrib = formatNum(item.avg * pct);
+       const newContrib = formatNum(item.finalAvg * pct);
+
+       if (item.isTarget && course.sustitutorio?.enabled && course.sustitutorio?.nota !== null) {
+          html += `<div class="res-line"><span class="k" style="color:var(--a1); font-weight:600;">${escapeHtml(item.t.name||'Trabajo')} (Sustituido)</span><span class="v">${item.avg !== item.finalAvg ? `<del style="opacity:0.4; font-size:11px; margin-right:6px;">${originalContrib}</del>` : ''}${newContrib}</span></div>`;
+       } else { html += `<div class="res-line"><span class="k">${escapeHtml(item.t.name||'Trabajo')} (${Number(item.t.percentage)||0}%)</span><span class="v">${originalContrib}</span></div>`; }
+    }
+  });
+
+  if (!pending){
+    const rounded = roundHalfUp(analysis.total); const passed = analysis.total >= course.threshold;
+    const pct = Math.max(0, Math.min(100, (analysis.total/20)*100)); const ringColor = passed ? 'var(--success)' : 'var(--danger)';
+    html += `<div class="ring-wrap"><div class="ring" style="background:conic-gradient(${ringColor} ${pct}%, rgba(255,255,255,.08) 0)"><div class="ring-inner"><div class="grade">${rounded}<small> /20</small></div></div></div><div class="raw-line">ponderado exacto: ${formatNum(analysis.total)}</div><div class="status-pill ${passed?'pass':'fail'}">${passed?'Aprobado':'Desaprobado'}</div></div>`;
+  } else {
+    const needed = solveNeeded(course);
+    if (needed === null){ html += `<div class="need-card"><div class="tag">Nota necesaria</div><div class="impossible">Matemáticamente Imposible.</div><p>Con las notas ya registradas, el máximo posible no llega a ${course.threshold}.</p></div>`; } 
+    else if (needed === 0) { html += `<div class="need-card" style="border-color: rgba(52,229,176,.3); background: rgba(52,229,176,.06);"><div class="tag" style="color: var(--success);">¡Curso Asegurado!</div><div class="need-val" style="background: linear-gradient(135deg, var(--success), #26A69A); -webkit-background-clip: text; background-clip: text; color: transparent;">0<small> /20</small></div><p>Con tu puntaje acumulado ya alcanzaste el <b>${course.threshold}</b>. Aprobarás incluso si sacas 0 en lo pendiente.</p></div>`; } 
+    else {
+      let pendingNames = [];
+      course.trabajos.forEach(t => { if (t.notas.length === 0 || t.notas.some(n => n.value === null)) pendingNames.push(t.name || 'Trabajo'); });
+      if (course.sustitutorio?.enabled && course.sustitutorio?.nota === null) pendingNames.push("Examen Sustitutorio");
+      
+      let pendingString = pendingNames.length === 1 ? `<b>${escapeHtml(pendingNames[0])}</b>` : `<b>${pendingNames.slice(0,-1).map(escapeHtml).join('</b>, <b>')}</b> y <b>${escapeHtml(pendingNames[pendingNames.length-1])}</b>`;
+      html += `<div class="need-card"><div class="tag">Nota necesaria en lo pendiente</div><div class="need-val">${formatNum(needed)}<small> /20</small></div><p>Necesitas ${formatNum(needed)} en ${pendingString} para aprobar con ${course.threshold}.</p></div>`;
+    }
+  }
+
+  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="number" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" step="0.1" ${dis}></div>`;
+  html += `</div>`;
+
+  panel.innerHTML = html;
+
+  if(!appState.viewOnlyMode) {
+      document.getElementById('threshold-input').addEventListener('input', (e)=>{ const v = parseFloat(e.target.value); course.threshold = isNaN(v) ? course.threshold : v; updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); });
+      const sustiToggle = document.getElementById('susti-toggle');
+      if (sustiToggle) {
+          sustiToggle.addEventListener('change', (e) => {
+              if (e.target.checked) {
+                  const currentTotal = getAnalysis(course, 0, 0).total;
+                  if (currentTotal >= course.threshold) { if (!confirm(`Tu nota actual (${formatNum(currentTotal)}) ya es aprobatoria. ¿Activar de todas formas?`)) { e.target.checked = false; return; } } 
+                  else if (currentTotal < 8) { if (!confirm(`Recuerda que tu promedio (${formatNum(currentTotal)}) es menor a 8. ¿Continuar?`)) { e.target.checked = false; return; } }
+                  course.sustitutorio.enabled = true;
+              } else { course.sustitutorio.enabled = false; course.sustitutorio.nota = null; }
+              updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
+          });
+      }
+      const sustiVal = document.getElementById('susti-val');
+      if (sustiVal) { sustiVal.addEventListener('input', (e) => { const raw = e.target.value.trim(); course.sustitutorio.nota = raw === '' ? null : parseFloat(raw); updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); }); }
+  }
+}
+
+function escapeHtml(str){ return String(str??'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeAttr(str){ return escapeHtml(str); }
+function timeAgo(ts){
+  const s = Math.floor((Date.now()-ts)/1000); if (s<60) return 'hace un momento';
+  const m = Math.floor(s/60); if (m<60) return `hace ${m} min`;
+  const h = Math.floor(m/60); if (h<24) return `hace ${h} h`;
+  const d = Math.floor(h/24); return `hace ${d} d`;
+}
+
+/* ============================================================
+   INICIALIZACIÓN Y DETECCIÓN DE URL
+   ============================================================ */
+async function init(){
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewId = urlParams.get('view');
+
+  if (firebaseAvailable) {
+      firebaseAuth.onAuthStateChanged(async (user) => {
+          appState.currentUser = user;
+          
+          if (viewId) {
+             // Modo ver curso compartido
+             appState.viewOnlyMode = true;
+             const doc = await firestoreDb.collection('cursos').doc(viewId).get();
+             if (doc.exists && doc.data().isPublic) {
+                 appState.openCourse = Object.assign({ id: viewId }, doc.data());
+             } else { alert("Este curso es privado o no existe."); window.location.href = window.location.pathname; return;}
+          }
+          
+          render();
+          if(user && !viewId) loadList();
+      });
+  } else { render(); }
+}
+init();
+
+document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && !appState.viewOnlyMode) {
+        if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault(); 
+            const inputs = Array.from(document.querySelectorAll('input[type="number"]:not(:disabled)'));
+            const index = inputs.indexOf(e.target);
+            if (index > -1) {
+                if ((e.key === 'Enter' || e.key === 'ArrowDown') && index < inputs.length - 1) inputs[index + 1].focus();
+                else if (e.key === 'ArrowUp' && index > 0) inputs[index - 1].focus();
+            }
+        }
+    }
+});
+document.addEventListener('wheel', function(e) { if (document.activeElement.type === 'number') document.activeElement.blur(); });
+</script>
+</body>
+</html>
