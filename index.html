@@ -90,7 +90,7 @@
   .user-badge:hover { border-color: var(--danger); color: var(--danger); }
   .user-badge .email {
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      max-width: 70px; /* Previene que desborde en móviles pequeños */
+      max-width: 70px;
   }
   @media (min-width: 480px) { .user-badge .email { max-width: 140px; } }
 
@@ -480,6 +480,12 @@ function render(){
             <div class="auth-form" id="login-form">
                 <input type="email" id="auth-email" placeholder="Correo institucional o personal">
                 <input type="password" id="auth-pass" placeholder="Contraseña">
+                
+                <label style="display: flex; align-items: center; gap: 8px; color: var(--text-dim); margin: 4px 0 2px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="rememberMe" checked style="width: 16px; height: 16px; accent-color: var(--a1); cursor: pointer;"> 
+                  Guardar sesión
+                </label>
+
                 <button class="pill pill-primary block" onclick="loginEmail()">Entrar</button>
                 <span class="auth-toggle" onclick="toggleAuthForm()">¿No tienes cuenta? Regístrate</span>
             </div>
@@ -487,6 +493,12 @@ function render(){
             <div class="auth-form" id="register-form" style="display:none;">
                 <input type="email" id="reg-email" placeholder="Nuevo correo">
                 <input type="password" id="reg-pass" placeholder="Crea una contraseña">
+                
+                <label style="display: flex; align-items: center; gap: 8px; color: var(--text-dim); margin: 4px 0 2px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="rememberMeReg" checked style="width: 16px; height: 16px; accent-color: var(--a1); cursor: pointer;"> 
+                  Guardar sesión
+                </label>
+
                 <button class="pill pill-primary block" onclick="registerEmail()">Crear cuenta</button>
                 <span class="auth-toggle" onclick="toggleAuthForm()">Ya tengo cuenta</span>
             </div>
@@ -518,25 +530,49 @@ function render(){
   }
 }
 
-/* --- Funciones de Autenticación --- */
+/* --- Funciones de Autenticación con Control de Sesión --- */
 function toggleAuthForm() {
     const login = document.getElementById('login-form');
     const reg = document.getElementById('register-form');
     if (login.style.display === 'none') { login.style.display = 'flex'; reg.style.display = 'none'; }
     else { login.style.display = 'none'; reg.style.display = 'flex'; }
 }
-function loginGoogle() {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    firebaseAuth.signInWithPopup(provider).catch(e => alert(e.message));
+
+async function loginGoogle() {
+    try {
+        const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
+        const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
+        
+        await firebaseAuth.setPersistence(persistence);
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await firebaseAuth.signInWithPopup(provider);
+    } catch(e) { alert(e.message); }
 }
-function loginEmail() {
-    const e = document.getElementById('auth-email').value; const p = document.getElementById('auth-pass').value;
-    firebaseAuth.signInWithEmailAndPassword(e, p).catch(err => alert(err.message));
+
+async function loginEmail() {
+    try {
+        const e = document.getElementById('auth-email').value; 
+        const p = document.getElementById('auth-pass').value;
+        const rememberMe = document.getElementById('rememberMe').checked;
+        const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
+
+        await firebaseAuth.setPersistence(persistence);
+        await firebaseAuth.signInWithEmailAndPassword(e, p);
+    } catch(err) { alert(err.message); }
 }
-function registerEmail() {
-    const e = document.getElementById('reg-email').value; const p = document.getElementById('reg-pass').value;
-    firebaseAuth.createUserWithEmailAndPassword(e, p).catch(err => alert(err.message));
+
+async function registerEmail() {
+    try {
+        const e = document.getElementById('reg-email').value; 
+        const p = document.getElementById('reg-pass').value;
+        const rememberMe = document.getElementById('rememberMeReg').checked;
+        const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
+
+        await firebaseAuth.setPersistence(persistence);
+        await firebaseAuth.createUserWithEmailAndPassword(e, p);
+    } catch(err) { alert(err.message); }
 }
+
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.tab = 'saved'; }
 
 /* --- Renderizados de Lista --- */
