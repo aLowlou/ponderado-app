@@ -666,7 +666,7 @@ function renderFolderView(folderName) {
     
     <div class="toolbar-panel">
       <div style="display:flex; align-items:center; gap:8px; flex:1;">
-        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar ciclo:</span>
+        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar asignaturas:</span>
         <select id="folder-sort-select" style="padding:6px 10px; font-size:12px;">
           <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
           <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modificación</option>
@@ -714,7 +714,6 @@ function renderFolderView(folderName) {
 
   document.getElementById('folder-back-btn').onclick = () => { appState.activeFolderView = null; render(); loadList(); };
   
-  // Editar nombre dentro de la carpeta
   document.getElementById('edit-folder-inside-btn').onclick = () => {
     const textSpan = document.getElementById('folder-view-text');
     let input = document.createElement('input');
@@ -840,7 +839,7 @@ function renderFolderView(folderName) {
   });
 }
 
-/* --- Lista Principal con Orden de Carpetas por Subir/Bajar --- */
+/* --- Lista Principal (Ordenamiento exclusivo para carpetas) --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
@@ -850,14 +849,11 @@ function renderCourseList(){
   html += `
     <div class="toolbar-panel">
       <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
-        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar:</span>
+        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar carpetas:</span>
         <select id="sort-select" style="padding:6px 10px; font-size:12px;">
           <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
-          <option value="updated-desc" ${appState.sortBy==='updated-desc'?'selected':''}>Última modificación</option>
           <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
           <option value="name-desc" ${appState.sortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
-          <option value="grade-desc" ${appState.sortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
-          <option value="grade-asc" ${appState.sortBy==='grade-asc'?'selected':''}>Menos nota a más nota</option>
         </select>
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
@@ -872,29 +868,36 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    let sortedList = [...appState.coursesIndex];
-    sortedList.sort((a, b) => {
-      if (appState.sortBy === 'name-asc') return a.name.localeCompare(b.name);
-      if (appState.sortBy === 'name-desc') return b.name.localeCompare(a.name);
-      if (appState.sortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
-      if (appState.sortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
-      if (appState.sortBy === 'created-desc') return b.createdAt - a.createdAt;
-      if (appState.sortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
-      return (a.orderIndex || 0) - (b.orderIndex || 0);
-    });
-
-    let folders = {};
-    sortedList.forEach(c => {
+    // Agrupar cursos por carpeta primero
+    let foldersMap = {};
+    appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
-      if (!folders[f]) folders[f] = [];
-      folders[f].push(c);
+      if (!foldersMap[f]) foldersMap[f] = [];
+      foldersMap[f].push(c);
     });
 
-    let folderNamesKeys = Object.keys(folders);
+    let folderNamesKeys = Object.keys(foldersMap);
+
+    // Ordenar las carpetas según el criterio seleccionado
+    if (appState.sortBy === 'name-asc') {
+      folderNamesKeys.sort((a, b) => a.localeCompare(b));
+    } else if (appState.sortBy === 'name-desc') {
+      folderNamesKeys.sort((a, b) => b.localeCompare(a));
+    } else {
+      // Orden personalizado basado en el orderIndex mínimo de sus cursos
+      folderNamesKeys.sort((a, b) => {
+        let minA = Math.min(...foldersMap[a].map(c => c.orderIndex || 0));
+        let minB = Math.min(...foldersMap[b].map(c => c.orderIndex || 0));
+        return minA - minB;
+      });
+    }
 
     html += `<div id="main-folders-list">`;
     folderNamesKeys.forEach((folderName, fIdx) => {
-      let courses = folders[folderName];
+      let courses = foldersMap[folderName];
+      // Orden interno de los cursos de la carpeta
+      courses.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
       html += `
         <div class="folder-container" data-folder-name="${escapeAttr(folderName)}">
           <div class="folder-header">
@@ -953,7 +956,7 @@ function renderCourseList(){
     render();
   };
 
-  // Botones para mover carpetas enteras de posición
+  // Botones para subir/bajar carpetas enteras reasignando orderIndex
   content.querySelectorAll('.move-up-folder').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -1413,7 +1416,7 @@ function refreshRulerOnly(course){
 }
 
 /* ============================================================
-   ACTUALIZACIÓN DE RESULTADOS
+   ACTUALIZACIÓN DE RESULTADOS (Con actualización reactiva limpia)
    ============================================================ */
 function updateResults(course){
   const panel = document.getElementById('results-panel');
@@ -1423,7 +1426,7 @@ function updateResults(course){
     panel.innerHTML = buildResultsHtml(course);
     wireResultsEvents(course);
   } else {
-    // Mantenemos la estructura pero actualizamos sin perder el foco ni la selección al escribir en la nota mínima
+    // Actualizamos el HTML completo de los resultados pero preservamos el valor y foco del input de nota mínima
     const thresholdInput = document.getElementById('threshold-input');
     const currentTypingValue = thresholdInput ? thresholdInput.value : null;
     const isFocused = document.activeElement && document.activeElement.id === 'threshold-input';
@@ -1436,7 +1439,7 @@ function updateResults(course){
     if (isFocused) {
       const newInp = document.getElementById('threshold-input');
       if (newInp) {
-        if (currentTypingValue !== null && currentTypingValue !== '') {
+        if (currentTypingValue !== null) {
           newInp.value = currentTypingValue;
         }
         newInp.focus();
@@ -1517,6 +1520,25 @@ function wireResultsEvents(course) {
       if (raw !== '' && !isNaN(raw)) {
         course.threshold = parseFloat(raw);
         if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
+        // Actualizamos los cálculos visuales sin destruir el input
+        const panel = document.getElementById('results-panel');
+        if (panel) {
+          const innerCard = document.getElementById('results-inner-card');
+          // Actualizamos solo la tarjeta de resultados interna para mantener fluidez
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = buildResultsHtml(course);
+          const newCard = tempDiv.querySelector('#results-inner-card');
+          if (innerCard && newCard) {
+            innerCard.replaceWith(newCard);
+            wireResultsEvents(course);
+            // Restaurar foco
+            const freshInp = document.getElementById('threshold-input');
+            if (freshInp) {
+              freshInp.value = raw;
+              freshInp.focus();
+            }
+          }
+        }
       }
     });
   }
