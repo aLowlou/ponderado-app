@@ -2,6 +2,16 @@
 <html lang="es">
 <head>
   <link rel="icon" type="image/png" href="logo.png">
+  <script>
+  // Redirección automática solo para usuarios de iOS (iPhone/iPad) desde Vercel hacia Firebase Hosting
+  const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) || 
+                (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+
+  if (isIOS && window.location.hostname.includes("vercel.app")) {
+    // Redirigimos conservando parámetros (como ?view=ID para que los enlaces compartidos también funcionen)
+    window.location.replace("https://ponderado.web.app" + window.location.search + window.location.hash);
+  }
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Ponderado — Dashboard</title>
