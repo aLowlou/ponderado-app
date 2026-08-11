@@ -571,8 +571,8 @@ async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
-        await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
-    } catch(e) { alert(e.message); }
+        await firebaseAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    } catch(e) { alert("Error o dominio no autorizado: " + e.message); }
 }
 async function loginEmail() {
     try {
@@ -672,7 +672,7 @@ function renderFolderView(folderName) {
         <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar asignaturas:</span>
         <select id="folder-sort-select" style="padding:6px 10px; font-size:12px;">
           <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
-          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modificación</option>
+          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modification</option>
           <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
           <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
           <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
@@ -842,15 +842,12 @@ function renderFolderView(folderName) {
   });
 }
 
-/* --- Lista Principal con Orden de Carpetas Real y Persistente --- */
+/* --- Lista Principal --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
   
   let html = '';
-  // Declaradas aquí (nivel de función) para que los botones ▲▼ de más abajo
-  // también puedan acceder a ellas — antes vivían dentro del bloque `else`
-  // y por eso los clics fallaban en silencio con "folderNamesKeys is not defined".
   let foldersMap = {};
   let folderNamesKeys = [];
 
@@ -889,7 +886,6 @@ function renderCourseList(){
     } else if (appState.sortBy === 'name-desc') {
       folderNamesKeys.sort((a, b) => b.localeCompare(a));
     } else {
-      // Orden personalizado basado en folderOrderIndex mínimo de sus cursos
       folderNamesKeys.sort((a, b) => {
         let minA = Math.min(...foldersMap[a].map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
         let minB = Math.min(...foldersMap[b].map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
@@ -960,7 +956,6 @@ function renderCourseList(){
     render();
   };
 
-  // Botones para subir/bajar carpetas enteras actualizando folderOrderIndex en Firebase
   content.querySelectorAll('.move-up-folder').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -969,8 +964,6 @@ function renderCourseList(){
       let idx = fKeys.indexOf(fName);
       if (idx > 0) {
         let temp = fKeys[idx]; fKeys[idx] = fKeys[idx - 1]; fKeys[idx - 1] = temp;
-        
-        // Guardar el nuevo orden de carpetas asignando folderOrderIndex a cada curso
         for (let i = 0; i < fKeys.length; i++) {
           let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
           for (let fc of currentFolderCourses) {
@@ -996,7 +989,6 @@ function renderCourseList(){
       let idx = fKeys.indexOf(fName);
       if (idx < fKeys.length - 1) {
         let temp = fKeys[idx]; fKeys[idx] = fKeys[idx + 1]; fKeys[idx + 1] = temp;
-        
         for (let i = 0; i < fKeys.length; i++) {
           let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
           for (let fc of currentFolderCourses) {
@@ -1595,14 +1587,6 @@ async function init(){
   const viewId = urlParams.get('view');
 
   if (firebaseAvailable) {
-      // 1. Capturar errores o completar el login al volver de Google
-      try {
-          await firebaseAuth.getRedirectResult();
-      } catch(e) {
-          console.error("Error en redirección:", e);
-      }
-
-      // 2. Escuchar el cambio de estado de autenticación
       firebaseAuth.onAuthStateChanged(async (user) => {
           appState.currentUser = user;
           
@@ -1611,11 +1595,7 @@ async function init(){
              const doc = await firestoreDb.collection('cursos').doc(viewId).get();
              if (doc.exists && doc.data().isPublic) {
                  appState.openCourse = Object.assign({ id: viewId }, doc.data());
-             } else { 
-                 alert("Este curso es privado o no existe."); 
-                 window.location.href = window.location.pathname; 
-                 return;
-             }
+             } else { alert("Este curso es privado o no existe."); window.location.href = window.location.pathname; return;}
           }
           
           render();
