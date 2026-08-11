@@ -233,7 +233,7 @@
 
 <script>
 /* ============================================================
-   MOTOR MATEMÁTICO & SUSTITUTORIO (Escala Dinámica)
+   MOTOR MATEMÁTICO & SUSTITUTORIO
    ============================================================ */
 function formatNum(num) { return Number(num.toFixed(4)); }
 
@@ -745,7 +745,6 @@ function renderFolderView(folderName) {
     renderFolderView(folderName);
   };
 
-  // Botones de Mover Arriba / Abajo en Carpeta
   content.querySelectorAll('.move-up-course').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -758,6 +757,7 @@ function renderFolderView(folderName) {
           let cObj = await Backend.getCourse(ids[i]);
           if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
         }
+        appState.folderSortBy = 'custom';
         await loadList();
         renderFolderView(folderName);
       }
@@ -776,6 +776,7 @@ function renderFolderView(folderName) {
           let cObj = await Backend.getCourse(ids[i]);
           if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
         }
+        appState.folderSortBy = 'custom';
         await loadList();
         renderFolderView(folderName);
       }
@@ -839,7 +840,7 @@ function renderFolderView(folderName) {
   });
 }
 
-/* --- Lista Principal con Sistema de Orden y Subir/Bajar Carpetas --- */
+/* --- Lista Principal con Botón de Añadir Carpeta y Control de Subir/Bajar --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
@@ -927,7 +928,12 @@ function renderCourseList(){
     html += `</div>`;
   }
 
-  html += `<button class="pill pill-primary block" id="new-course-btn" style="margin-top:16px;">+ Nuevo curso</button>`;
+  html += `
+    <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+      <button class="pill pill-primary block" id="new-course-btn">+ Nuevo curso</button>
+      <button class="pill pill-dashed block" id="new-folder-btn" style="color:var(--a1); border-color:rgba(124,92,255,.4);">+ Añadir carpeta</button>
+    </div>
+  `;
   content.innerHTML = html;
 
   document.getElementById('sort-select').onchange = (e) => {
@@ -937,7 +943,17 @@ function renderCourseList(){
 
   document.getElementById('export-selected-btn').onclick = () => openExportModal();
 
-  // Mover Carpeta Arriba / Abajo
+  // Botón para Añadir Carpeta vacía
+  document.getElementById('new-folder-btn').onclick = async () => {
+    let folderName = prompt("Nombre de la nueva carpeta (ej. Ciclo 8):");
+    if (!folderName || !folderName.trim()) return;
+    folderName = folderName.trim();
+    const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+    await Backend.saveCourse(course);
+    appState.openCourse = course;
+    render();
+  };
+
   content.querySelectorAll('.move-up-folder').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -984,7 +1000,6 @@ function renderCourseList(){
     };
   });
 
-  // Edición fluida de carpeta desde afuera
   content.querySelectorAll('.folder-edit-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -1133,7 +1148,7 @@ async function loadList(){
   if (appState.tab === 'saved' && !appState.openCourse && appState.activeFolderView === null) renderCourseList();
 }
 
-/* --- EDITOR DE CURSO (Con Escala de Nota Máxima y Nota Mínima Arreglada) --- */
+/* --- EDITOR DE CURSO --- */
 function renderEditorScreen(course, persist){
   const content = document.getElementById('tab-content');
   let html = '';
@@ -1398,19 +1413,36 @@ function refreshRulerOnly(course){
 }
 
 /* ============================================================
-   ACTUALIZACIÓN DE RESULTADOS (Con Input Independiente para evitar perder foco)
+   ACTUALIZACIÓN DE RESULTADOS (Solución definitiva para el foco del input)
    ============================================================ */
 function updateResults(course){
   const panel = document.getElementById('results-panel');
   if (!panel) return;
 
-  // Si ya existe el panel de resultados, solo actualizamos dinámicamente sus partes internas para no recrear el input de nota mínima
   if (!panel.querySelector('.card')) {
     panel.innerHTML = buildResultsHtml(course);
     wireResultsEvents(course);
   } else {
-    // Actualización inteligente sin destruir el input en uso
-    updateResultsContentOnly(course);
+    // Preservamos el valor exacto del input de nota mínima mientras el usuario escribe para que no pierda el foco ni salte el cursor
+    const thresholdInput = document.getElementById('threshold-input');
+    const currentTypingValue = thresholdInput ? thresholdInput.value : null;
+    const isFocused = document.activeElement && document.activeElement.id === 'threshold-input';
+    const selectionStart = isFocused ? thresholdInput.selectionStart : null;
+    const selectionEnd = isFocused ? thresholdInput.selectionEnd : null;
+
+    panel.innerHTML = buildResultsHtml(course);
+    wireResultsEvents(course);
+
+    if (isFocused) {
+      const newInp = document.getElementById('threshold-input');
+      if (newInp) {
+        if (currentTypingValue !== null && currentTypingValue !== '') {
+          newInp.value = currentTypingValue;
+        }
+        newInp.focus();
+        if (selectionStart !== null) newInp.setSelectionRange(selectionStart, selectionEnd);
+      }
+    }
   }
 }
 
@@ -1470,37 +1502,9 @@ function buildResultsHtml(course) {
     }
   }
 
-  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="number" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" step="0.1" min="0" max="${maxScale}" ${dis}></div>`;
+  html += `<div class="threshold-row" style="margin-top:24px;"><span>Nota mínima para aprobar:</span><input type="number" style="width: 70px !important; text-align: center;" id="threshold-input" value="${course.threshold}" step="any" min="0" max="${maxScale}" ${dis}></div>`;
   html += `</div>`;
   return html;
-}
-
-function updateResultsContentOnly(course) {
-  const innerCard = document.getElementById('results-inner-card');
-  if (!innerCard) {
-    document.getElementById('results-panel').innerHTML = buildResultsHtml(course);
-    wireResultsEvents(course);
-    return;
-  }
-  // Guardamos si el input de nota mínima estaba enfocado
-  const activeElId = document.activeElement ? document.activeElement.id : null;
-  const selectionStart = activeElId === 'threshold-input' ? document.activeElement.selectionStart : null;
-  const selectionEnd = activeElId === 'threshold-input' ? document.activeElement.selectionEnd : null;
-
-  // Reconstruimos el contenido interno del card de resultados
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = buildResultsHtml(course);
-  document.getElementById('results-panel').innerHTML = tempDiv.innerHTML;
-  wireResultsEvents(course);
-
-  // Restauramos el foco si estaba en el input de nota mínima
-  if (activeElId === 'threshold-input') {
-    const newInp = document.getElementById('threshold-input');
-    if (newInp) {
-      newInp.focus();
-      if (selectionStart !== null) newInp.setSelectionRange(selectionStart, selectionEnd);
-    }
-  }
 }
 
 function wireResultsEvents(course) {
@@ -1509,10 +1513,11 @@ function wireResultsEvents(course) {
   const thresholdInp = document.getElementById('threshold-input');
   if (thresholdInp) {
     thresholdInp.addEventListener('input', (e)=>{ 
-      const v = parseFloat(e.target.value); 
-      course.threshold = isNaN(v) ? course.threshold : v; 
-      updateResultsContentOnly(course); 
-      if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); 
+      const raw = e.target.value;
+      if (raw !== '' && !isNaN(raw)) {
+        course.threshold = parseFloat(raw);
+        if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
+      }
     });
   }
 
