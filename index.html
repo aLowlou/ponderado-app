@@ -572,11 +572,17 @@ async function loginGoogle() {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
         
-        // Forzar redirección directa para probar el flujo completo
-        await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+        const provider = new firebase.auth.GoogleAuthProvider();
+        // Usamos popup como método principal para evitar el bloqueo de cookies cruzadas entre Vercel y Firebase
+        await firebaseAuth.signInWithPopup(provider);
         
     } catch(e) { 
-        alert("Error al iniciar sesión: " + e.message); 
+        // Solo si el navegador bloquea explícitamente el popup (ej. Safari estricto en iOS), intentamos redirección
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
+            await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+        } else {
+            alert("Error al iniciar sesión: " + e.message); 
+        }
     }
 }
 async function loginEmail() {
