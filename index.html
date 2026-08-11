@@ -560,7 +560,7 @@ function render(){
   }
 }
 
-/* --- Autenticación --- */
+/* --- Autenticación Híbrida --- */
 function toggleAuthForm() {
     const login = document.getElementById('login-form');
     const reg = document.getElementById('register-form');
@@ -571,8 +571,23 @@ async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
-        await firebaseAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-    } catch(e) { alert("Error o dominio no autorizado: " + e.message); }
+        const provider = new firebase.auth.GoogleAuthProvider();
+        
+        // Si es celular o Safari, abrimos por redirección para que no se bloquee el popup
+        const isMobileOrSafari = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 
+                                 (/^((?!chrome|android).)*safari/i.test(navigator.userAgent));
+        if (isMobileOrSafari) {
+            await firebaseAuth.signInWithRedirect(provider);
+        } else {
+            await firebaseAuth.signInWithPopup(provider);
+        }
+    } catch(e) { 
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
+            await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+        } else {
+            alert("Error al iniciar sesión: " + e.message); 
+        }
+    }
 }
 async function loginEmail() {
     try {
@@ -672,7 +687,7 @@ function renderFolderView(folderName) {
         <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar asignaturas:</span>
         <select id="folder-sort-select" style="padding:6px 10px; font-size:12px;">
           <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
-          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modification</option>
+          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modificación</option>
           <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
           <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
           <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
@@ -1587,6 +1602,13 @@ async function init(){
   const viewId = urlParams.get('view');
 
   if (firebaseAvailable) {
+      // Manejar respuesta de inicio de sesión por redirección al regresar de Safari/móvil
+      try {
+          await firebaseAuth.getRedirectResult();
+      } catch(e) {
+          console.error("Error al procesar el redireccionamiento:", e);
+      }
+
       firebaseAuth.onAuthStateChanged(async (user) => {
           appState.currentUser = user;
           
