@@ -206,10 +206,11 @@
   .qb-text{ display:flex; align-items:center; font-size:13px; color:var(--text-dim); font-weight:500; font-family:var(--sans); }
   .qb-text svg { color: var(--a1); opacity: 0.9; margin-right: 8px;}
 
-  /* --- Elementos de Compartir --- */
-  .header-actions { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .share-btn { display: flex; align-items: center; gap: 6px; background: rgba(53, 199, 242, 0.1); border: 1px solid rgba(53, 199, 242, 0.3); color: var(--a2); padding: 8px 14px; border-radius: var(--r-pill); font-size: 12px; cursor: pointer; font-weight: 600;}
-  .share-btn:hover { background: rgba(53, 199, 242, 0.2); }
+  /* --- Elementos de Compartir e Intercambio --- */
+  .header-actions { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+  .action-buttons-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .share-btn, .io-btn { display: flex; align-items: center; gap: 6px; background: rgba(53, 199, 242, 0.1); border: 1px solid rgba(53, 199, 242, 0.3); color: var(--a2); padding: 8px 14px; border-radius: var(--r-pill); font-size: 12px; cursor: pointer; font-weight: 600;}
+  .share-btn:hover, .io-btn:hover { background: rgba(53, 199, 242, 0.2); }
   .read-only-banner { background: rgba(255, 180, 84, 0.1); border: 1px solid rgba(255, 180, 84, 0.3); color: var(--warn); padding: 12px; border-radius: 16px; text-align: center; font-size: 13px; margin-bottom: 24px; }
   
   .back-btn{background:var(--card);border:1px solid var(--border);color:var(--text-dim);border-radius:var(--r-pill); padding:9px 15px;font-size:12.5px;cursor:pointer;font-weight:600;}
@@ -580,6 +581,15 @@ function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
   let html = '';
+  
+  // Botón global de importar en la lista principal
+  html += `
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <button class="pill pill-dashed block" id="import-global-btn" style="flex:1; padding:10px; font-size:12.5px;">📥 Importar curso (.json)</button>
+      <input type="file" id="global-file-input" accept=".json" style="display:none">
+    </div>
+  `;
+
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
@@ -593,6 +603,30 @@ function renderCourseList(){
   }
   html += `<button class="pill pill-primary block" id="new-course-btn">+ Nuevo curso</button>`;
   content.innerHTML = html;
+
+  // Evento para importar desde la lista
+  const globalFileIn = document.getElementById('global-file-input');
+  document.getElementById('import-global-btn').onclick = () => globalFileIn.click();
+  globalFileIn.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const importedData = JSON.parse(event.target.result);
+        migrateCourse(importedData);
+        importedData.id = uid(); // Nuevo id para que no colisione
+        importedData.ownerId = appState.currentUser.uid; // Asignar al usuario actual
+        await Backend.saveCourse(importedData);
+        appState.openCourse = importedData;
+        render();
+        loadList();
+      } catch (err) {
+        alert("El archivo no es un curso válido.");
+      }
+    };
+    reader.readAsText(file);
+  };
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
@@ -637,10 +671,13 @@ function renderEditorScreen(course, persist){
     html += `
       <div class="header-actions">
         <button class="back-btn" id="back-btn">‹ Mis cursos</button>
-        <div style="display:flex; gap:12px; align-items:center;">
+        <div class="action-buttons-group">
+           <button class="io-btn" id="export-btn" title="Exportar este curso a archivo JSON">📤 Exportar</button>
+           <button class="io-btn" id="import-btn" title="Importar datos a este curso">📥 Importar</button>
+           <input type="file" id="import-file-input" accept=".json" style="display:none">
            <button class="share-btn" id="share-btn">
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-             ${course.isPublic ? 'Enlace activado' : 'Compartir notas'}
+             ${course.isPublic ? 'Enlace activado' : 'Compartir'}
            </button>
            <span class="save-flag" id="save-flag">GUARDADO ✓</span>
         </div>
@@ -653,7 +690,10 @@ function renderEditorScreen(course, persist){
     html += `
       <div class="quick-banner">
         <span class="qb-text"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="14.01"></line><line x1="12" y1="14" x2="12" y2="14.01"></line><line x1="8" y1="14" x2="8" y2="14.01"></line><line x1="16" y1="18" x2="16" y2="18.01"></line><line x1="12" y1="18" x2="12" y2="18.01"></line><line x1="8" y1="18" x2="8" y2="18.01"></line></svg>Modo borrador — No se guardarán los datos</span>
-        <button class="back-btn" id="reset-quick-btn">↺ Reiniciar</button>
+        <div style="display:flex; gap:8px;">
+           <button class="io-btn" id="export-quick-btn" style="padding:6px 12px; font-size:11px;">📤 Exportar</button>
+           <button class="back-btn" id="reset-quick-btn">↺ Reiniciar</button>
+        </div>
       </div>`;
   }
 
@@ -675,6 +715,42 @@ function renderEditorScreen(course, persist){
     document.getElementById('back-btn').onclick = () => { appState.openCourse = null; appState.tab='saved'; render(); loadList(); };
     document.getElementById('course-name').addEventListener('input', (e) => { course.name = e.target.value; debounceSave(course); });
     
+    // Lógica de Exportación individual
+    document.getElementById('export-btn').onclick = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(course, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `${course.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_ponderado.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    };
+
+    // Lógica de Importación individual
+    const fileInput = document.getElementById('import-file-input');
+    document.getElementById('import-btn').onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const imported = JSON.parse(event.target.result);
+                migrateCourse(imported);
+                // Mantenemos el ID y owner actual pero sobrescribimos el contenido
+                imported.id = course.id;
+                imported.ownerId = appState.currentUser.uid;
+                appState.openCourse = imported;
+                await persistCourse(imported);
+                render();
+                alert("¡Curso importado con éxito!");
+            } catch (err) {
+                alert("El archivo seleccionado no es válido.");
+            }
+        };
+        reader.readAsText(file);
+    };
+
     // Lógica de Compartir
     document.getElementById('share-btn').onclick = () => {
         if (!course.isPublic) {
@@ -684,12 +760,21 @@ function renderEditorScreen(course, persist){
             }
         } else {
             prompt("Copia este enlace para compartir tus notas:", window.location.origin + window.location.pathname + "?view=" + course.id);
-            if(confirm("¿Quieres volver a hacer privado este curso? El enlace dejará de funcionar.")) { course.isPublic = false; persistCourse(course); document.getElementById('share-btn').innerHTML = 'Compartir notas';}
+            if(confirm("¿Quieres volver a hacer privado este curso? El enlace dejará de funcionar.")) { course.isPublic = false; persistCourse(course); document.getElementById('share-btn').innerHTML = 'Compartir';}
         }
     };
 
   } else if (!appState.viewOnlyMode && !persist) {
     document.getElementById('reset-quick-btn').onclick = () => { appState.quickCourse = defaultCourse('Cálculo rápido'); render(); };
+    document.getElementById('export-quick-btn').onclick = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState.quickCourse, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `calculo_rapido_ponderado.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    };
   }
 
   if (!appState.viewOnlyMode) {
