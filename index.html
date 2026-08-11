@@ -571,22 +571,12 @@ async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
-        const provider = new firebase.auth.GoogleAuthProvider();
         
-        // Si es celular o Safari, abrimos por redirección para que no se bloquee el popup
-        const isMobileOrSafari = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 
-                                 (/^((?!chrome|android).)*safari/i.test(navigator.userAgent));
-        if (isMobileOrSafari) {
-            await firebaseAuth.signInWithRedirect(provider);
-        } else {
-            await firebaseAuth.signInWithPopup(provider);
-        }
+        // Forzar redirección directa para probar el flujo completo
+        await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+        
     } catch(e) { 
-        if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
-            await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
-        } else {
-            alert("Error al iniciar sesión: " + e.message); 
-        }
+        alert("Error al iniciar sesión: " + e.message); 
     }
 }
 async function loginEmail() {
