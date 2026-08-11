@@ -198,15 +198,6 @@
   .threshold-row{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;font-size:12px;color:var(--text-dim);}
   .threshold-row input{text-align:center;font-family:var(--mono); width: 100px !important;}
 
-  /* --- Banner de Cálculo Rápido Renovado --- */
-  .quick-banner{
-    display:flex; align-items:center; justify-content:space-between;
-    background: rgba(141, 149, 172, 0.08); border: 1px solid rgba(141, 149, 172, 0.15);
-    border-radius: 18px; padding: 12px 18px; margin-bottom: 24px;
-  }
-  .qb-text{ display:flex; align-items:center; font-size:13px; color:var(--text-dim); font-weight:500; font-family:var(--sans); }
-  .qb-text svg { color: var(--a1); opacity: 0.9; margin-right: 8px;}
-
   /* --- Elementos de Compartir e Intercambio --- */
   .header-actions { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
   .action-buttons-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -219,20 +210,26 @@
   .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
   .save-flag.show{opacity:1;}
   
-  .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s;}
+  .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;cursor:grab;transition:border-color .15s;}
+  .course-row:active{cursor:grabbing;}
   .course-row:hover{border-color:rgba(124,92,255,.4);}
   .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
   .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
 
-  /* --- Estilos para Carpetas y Drag & Drop --- */
-  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; cursor: move; }
+  /* --- Carpetas y Arrastre --- */
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; cursor: grab; }
+  .folder-container:active { cursor: grabbing; }
   .folder-container.dragging { opacity: 0.4; }
   .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
   .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
-  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
+  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); cursor: default; }
   .course-row.dragging { opacity: 0.4; }
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
+
+  /* Modal selectivo */
+  .modal-overlay { position: fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; }
+  .modal-box { background:var(--card); border:1px solid var(--border); border-radius:var(--r-card); padding:24px; width:90%; max-width:400px; max-height:80vh; display:flex; flex-direction:column; }
 </style>
 </head>
 <body>
@@ -379,7 +376,7 @@ try {
 } catch(e){ console.error(e); }
 
 /* ============================================================
-   CAPA DE ALMACENAMIENTO (FIREBASE GLOBAL)
+   ESTADO DE LA APLICACIÓN
    ============================================================ */
 const appState = {
   currentUser: null,
@@ -388,10 +385,11 @@ const appState = {
   tab: 'saved',
   coursesIndex: [],
   openCourse: null,
-  activeFolderView: null, // Si tiene nombre, muestra solo esa carpeta
+  activeFolderView: null,
   quickCourse: defaultCourse('Cálculo rápido', null),
   loadingList: true,
-  sortBy: 'custom' // 'custom', 'updated-desc', 'name-asc', etc.
+  sortBy: 'custom',
+  folderSortBy: 'custom' // Ordenamiento independiente dentro de carpetas
 };
 
 const Backend = {
@@ -594,19 +592,68 @@ async function registerEmail() {
 }
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.tab = 'saved'; }
 
-/* --- Vista Detallada de Carpeta --- */
+/* --- Modal Selector para Exportar en Lote --- */
+function openExportModal() {
+  let modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'export-modal';
+  
+  let optionsHtml = appState.coursesIndex.map(c => `
+    <label style="display:flex; align-items:center; gap:10px; margin-bottom:8px; cursor:pointer; font-size:14px;">
+      <input type="checkbox" class="export-chk" value="${c.id}" style="width:16px; height:16px; accent-color:var(--a1);">
+      ${escapeHtml(c.name)} <span style="font-size:11px; color:var(--text-dim)">(${c.folder})</span>
+    </label>
+  `).join('');
+
+  modal.innerHTML = `
+    <div class="modal-box">
+      <h3 style="margin-top:0; font-family:var(--display)">Exportar Asignaturas</h3>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Selecciona las asignaturas que deseas exportar a un archivo JSON:</p>
+      <div style="max-height:200px; overflow-y:auto; margin:10px 0; border:1px solid var(--border); padding:10px; border-radius:12px;">
+        ${optionsHtml || '<p style="color:var(--text-dim)">No hay cursos disponibles.</p>'}
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+        <button class="pill small" id="close-modal-btn" style="background:var(--card-inset); color:var(--text)">Cancelar</button>
+        <button class="pill pill-primary small" id="confirm-export-btn">Descargar Selección</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  document.getElementById('close-modal-btn').onclick = () => modal.remove();
+  document.getElementById('confirm-export-btn').onclick = async () => {
+    const checked = Array.from(modal.querySelectorAll('.export-chk:checked')).map(el => el.value);
+    if (checked.length === 0) { alert("Selecciona al menos un curso."); return; }
+    
+    let exportData = [];
+    for (const id of checked) {
+      let fullC = await Backend.getCourse(id);
+      if (fullC) exportData.push(fullC);
+    }
+    
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+    const dl = document.createElement('a');
+    dl.setAttribute("href", dataStr);
+    dl.setAttribute("download", `asignaturas_seleccionadas_ponderado.json`);
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+    modal.remove();
+  };
+}
+
+/* --- Vista Detallada de Carpeta con Ordenamiento Independiente --- */
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
   let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
 
-  // Ordenar segun criterio
   folderCourses.sort((a, b) => {
-    if (appState.sortBy === 'name-asc') return a.name.localeCompare(b.name);
-    if (appState.sortBy === 'name-desc') return b.name.localeCompare(a.name);
-    if (appState.sortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
-    if (appState.sortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
-    if (appState.sortBy === 'created-desc') return b.createdAt - a.createdAt;
-    if (appState.sortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
+    if (appState.folderSortBy === 'name-asc') return a.name.localeCompare(b.name);
+    if (appState.folderSortBy === 'name-desc') return b.name.localeCompare(a.name);
+    if (appState.folderSortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
+    if (appState.folderSortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
+    if (appState.folderSortBy === 'created-desc') return b.createdAt - a.createdAt;
+    if (appState.folderSortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
     return (a.orderIndex || 0) - (b.orderIndex || 0);
   });
 
@@ -617,6 +664,21 @@ function renderFolderView(folderName) {
         <button class="io-btn" id="export-this-folder">📤 Exportar carpeta</button>
       </div>
     </div>
+    
+    <div class="toolbar-panel">
+      <div style="display:flex; align-items:center; gap:8px; flex:1;">
+        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar ciclo:</span>
+        <select id="folder-sort-select" style="padding:6px 10px; font-size:12px;">
+          <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
+          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modificación</option>
+          <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
+          <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
+          <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
+          <option value="grade-asc" ${appState.folderSortBy==='grade-asc'?'selected':''}>Menos nota a más nota</option>
+        </select>
+      </div>
+    </div>
+
     <div class="card" style="margin-bottom:16px;">
       <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;">📁 ${escapeHtml(folderName)}</h2>
       <p style="color:var(--text-dim); font-size:13px; margin:0;">Administra y ordena las asignaturas de este ciclo.</p>
@@ -646,7 +708,11 @@ function renderFolderView(folderName) {
 
   document.getElementById('folder-back-btn').onclick = () => { appState.activeFolderView = null; render(); loadList(); };
   
-  // Exportar esta carpeta específica
+  document.getElementById('folder-sort-select').onchange = (e) => {
+    appState.folderSortBy = e.target.value;
+    renderFolderView(folderName);
+  };
+
   document.getElementById('export-this-folder').onclick = async () => {
     let fullFolderData = [];
     for (const cMeta of folderCourses) {
@@ -662,7 +728,6 @@ function renderFolderView(folderName) {
     dl.remove();
   };
 
-  // Añadir asignatura directamente a esta carpeta
   document.getElementById('add-to-folder-btn').onclick = async () => {
     const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
     await Backend.saveCourse(course);
@@ -670,7 +735,6 @@ function renderFolderView(folderName) {
     render();
   };
 
-  // Eventos de abrir y borrar curso dentro de la carpeta
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
       if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]')) return;
@@ -705,12 +769,12 @@ function renderFolderView(folderName) {
     };
   });
 
-  // Drag & Drop manual dentro de la carpeta
+  // Drag & Drop corregido para cursos en la carpeta
   let draggedId = null;
   const listEl = document.getElementById('folder-courses-list');
   if (listEl) {
     listEl.querySelectorAll('.course-row').forEach(row => {
-      row.addEventListener('dragstart', (e) => { draggedId = row.getAttribute('data-course-id'); row.classList.add('dragging'); });
+      row.addEventListener('dragstart', (e) => { draggedId = row.getAttribute('data-course-id'); row.classList.add('dragging'); e.stopPropagation(); });
       row.addEventListener('dragend', () => { row.classList.remove('dragging'); });
       row.addEventListener('dragover', (e) => e.preventDefault());
       row.addEventListener('drop', async (e) => {
@@ -727,7 +791,6 @@ function renderFolderView(folderName) {
         ids.splice(fromIdx, 1);
         ids.splice(toIdx, 0, draggedId);
 
-        // Guardar nuevo orden personalizado en Firebase
         for (let i = 0; i < ids.length; i++) {
           let cObj = await Backend.getCourse(ids[i]);
           if (cObj) {
@@ -735,6 +798,7 @@ function renderFolderView(folderName) {
             await Backend.saveCourse(cObj);
           }
         }
+        appState.folderSortBy = 'custom';
         await loadList();
         renderFolderView(folderName);
       });
@@ -742,7 +806,7 @@ function renderFolderView(folderName) {
   }
 }
 
-/* --- Renderizados de Lista Principal con Carpetas y Orden --- */
+/* --- Renderizados de Lista Principal con Edición en Línea de Carpeta --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
@@ -756,15 +820,15 @@ function renderCourseList(){
         <select id="sort-select" style="padding:6px 10px; font-size:12px;">
           <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
           <option value="updated-desc" ${appState.sortBy==='updated-desc'?'selected':''}>Última modificación</option>
-          <option value="created-desc" ${appState.sortBy==='created-desc'?'selected':''}>Fecha de creación</option>
           <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
           <option value="name-desc" ${appState.sortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
           <option value="grade-desc" ${appState.sortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
           <option value="grade-asc" ${appState.sortBy==='grade-asc'?'selected':''}>Menos nota a más nota</option>
         </select>
       </div>
-      <div style="display:flex; gap:6px;">
-        <button class="io-btn" id="export-all-btn" title="Exportar todos tus cursos">📤 Exportar Todo</button>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="io-btn" id="export-selected-btn" title="Exportar asignaturas seleccionadas">📤 Exportar</button>
+        <button class="io-btn" id="export-all-btn" title="Exportar todo">📤 Todo</button>
         <button class="io-btn" id="import-global-btn" title="Importar JSON">📥 Importar</button>
         <input type="file" id="global-file-input" accept=".json" multiple style="display:none">
       </div>
@@ -782,7 +846,7 @@ function renderCourseList(){
       if (appState.sortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
       if (appState.sortBy === 'created-desc') return b.createdAt - a.createdAt;
       if (appState.sortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
-      return (a.orderIndex || 0) - (b.orderIndex || 0); // custom
+      return (a.orderIndex || 0) - (b.orderIndex || 0);
     });
 
     let folders = {};
@@ -798,11 +862,11 @@ function renderCourseList(){
         <div class="folder-container" draggable="true" data-folder-name="${escapeAttr(folderName)}">
           <div class="folder-header">
             <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
-              <span class="folder-title">📁 ${escapeHtml(folderName)}</span>
+              <span class="folder-title">📁 <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
               <span style="font-size:12px; color:var(--text-dim); font-weight:normal;">(${courses.length})</span>
             </div>
             <div style="display:flex; gap:6px; align-items:center;">
-              <button class="icon-btn" data-edit-folder="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
+              <button class="icon-btn folder-edit-btn" data-folder-target="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
               <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
             </div>
           </div>
@@ -832,31 +896,51 @@ function renderCourseList(){
     renderCourseList();
   };
 
+  // Botón Exportar selectivo (abre el modal)
+  document.getElementById('export-selected-btn').onclick = () => openExportModal();
+
+  // Edición fluida de nombre de carpeta con Textbox al presionar el lápiz
+  content.querySelectorAll('.folder-edit-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const oldName = btn.getAttribute('data-folder-target');
+      const headerWrap = btn.closest('.folder-header').querySelector('.folder-title-wrap');
+      const textSpan = headerWrap.querySelector('.folder-label-text');
+      
+      let input = document.createElement('input');
+      input.type = 'text';
+      input.value = oldName;
+      input.style.cssText = "background:var(--card-inset); border:1px solid var(--a1); padding:4px 8px; border-radius:8px; color:white; font-size:15px; width:160px; font-family:var(--display); font-weight:700;";
+      
+      textSpan.replaceWith(input);
+      input.focus();
+      input.select();
+
+      const saveNewName = async () => {
+        const newName = input.value.trim();
+        if (!newName || newName === oldName) { renderCourseList(); return; }
+
+        let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === oldName);
+        for (const cMeta of folderCourses) {
+          let fullC = await Backend.getCourse(cMeta.id);
+          if (fullC) {
+            fullC.folder = newName;
+            await Backend.saveCourse(fullC);
+          }
+        }
+        loadList();
+      };
+
+      input.onblur = saveNewName;
+      input.onkeydown = (ev) => { if (ev.key === 'Enter') saveNewName(); };
+    };
+  });
+
   // Abrir carpeta al hacer click en su título
   content.querySelectorAll('[data-open-folder]').forEach(el => {
     el.onclick = () => {
       appState.activeFolderView = el.getAttribute('data-open-folder');
       render();
-    };
-  });
-
-  // Editar nombre de carpeta desde afuera
-  content.querySelectorAll('[data-edit-folder]').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const oldName = btn.getAttribute('data-edit-folder');
-      const newName = prompt("Nuevo nombre para la carpeta:", oldName);
-      if (!newName || !newName.trim() || newName.trim() === oldName) return;
-      
-      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === oldName);
-      for (const cMeta of folderCourses) {
-        let fullC = await Backend.getCourse(cMeta.id);
-        if (fullC) {
-          fullC.folder = newName.trim();
-          await Backend.saveCourse(fullC);
-        }
-      }
-      loadList();
     };
   });
 
@@ -897,7 +981,7 @@ function renderCourseList(){
     };
   });
 
-  // Exportar Curso individual desde afuera
+  // Exportar Curso individual
   content.querySelectorAll('[data-export-course]').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -966,12 +1050,12 @@ function renderCourseList(){
     await Backend.saveCourse(course); appState.openCourse = course; render();
   };
 
-  // Drag & Drop para ordenar carpetas enteras
+  // Drag & Drop funcional para reordenar carpetas
   let draggedFolder = null;
   const foldersListEl = document.getElementById('main-folders-list');
   if (foldersListEl) {
     foldersListEl.querySelectorAll('.folder-container').forEach(fEl => {
-      fEl.addEventListener('dragstart', (e) => { draggedFolder = fEl.getAttribute('data-folder-name'); fEl.classList.add('dragging'); });
+      fEl.addEventListener('dragstart', (e) => { draggedFolder = fEl.getAttribute('data-folder-name'); fEl.classList.add('dragging'); e.stopPropagation(); });
       fEl.addEventListener('dragend', () => { fEl.classList.remove('dragging'); });
       fEl.addEventListener('dragover', (e) => e.preventDefault());
       fEl.addEventListener('drop', async (e) => {
@@ -982,7 +1066,6 @@ function renderCourseList(){
         const targetFolder = targetContainer.getAttribute('data-folder-name');
         if (draggedFolder === targetFolder) return;
 
-        // Reordenar asignando orden personalizado a los cursos de las carpetas afectadas
         let folderNames = Array.from(foldersListEl.querySelectorAll('.folder-container')).map(el => el.getAttribute('data-folder-name'));
         let fromIdx = folderNames.indexOf(draggedFolder);
         let toIdx = folderNames.indexOf(targetFolder);
