@@ -322,6 +322,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     name: name || 'Nuevo curso',
     folder: folderName,
     orderIndex: 0,
+    folderOrderIndex: 0,
     threshold: 10.5,
     maxScale: 20,
     ownerId: ownerId || null,
@@ -338,6 +339,7 @@ function migrateCourse(course){
   if (typeof course.maxScale !== 'number') course.maxScale = 20;
   if (!course.folder) course.folder = 'General';
   if (typeof course.orderIndex !== 'number') course.orderIndex = 0;
+  if (typeof course.folderOrderIndex !== 'number') course.folderOrderIndex = 0;
   if (!course.createdAt) course.createdAt = course.updatedAt || Date.now();
   if (!Array.isArray(course.trabajos)) course.trabajos = [];
   for (const t of course.trabajos){
@@ -404,6 +406,7 @@ const Backend = {
          name: data.name || 'Sin nombre', 
          folder: data.folder || 'General',
          orderIndex: typeof data.orderIndex === 'number' ? data.orderIndex : 0,
+         folderOrderIndex: typeof data.folderOrderIndex === 'number' ? data.folderOrderIndex : 0,
          updatedAt: data.updatedAt || 0,
          createdAt: data.createdAt || 0,
          totalGrade: getAnalysis(data, 0, 0).total
@@ -839,7 +842,7 @@ function renderFolderView(folderName) {
   });
 }
 
-/* --- Lista Principal (Control de orden de Carpetas y Subir/Bajar Carpetas) --- */
+/* --- Lista Principal con Orden de Carpetas Real y Persistente --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
@@ -868,9 +871,7 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    // Agrupar cursos por carpeta
     let foldersMap = {};
-    appState.coursesIndex.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
     appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
@@ -879,21 +880,16 @@ function renderCourseList(){
 
     let folderNamesKeys = Object.keys(foldersMap);
 
-    // Ordenar carpetas según el selector
     if (appState.sortBy === 'name-asc') {
       folderNamesKeys.sort((a, b) => a.localeCompare(b));
     } else if (appState.sortBy === 'name-desc') {
       folderNamesKeys.sort((a, b) => b.localeCompare(a));
     } else {
-      // Orden personalizado por bloques de carpetas guardadas en localStorage o estado
-      let savedFolderOrder = appState.folderCustomOrder || [];
-      // Asegurarnos de que todas las carpetas actuales estén incluidas
+      // Orden personalizado basado en folderOrderIndex mínimo de sus cursos
       folderNamesKeys.sort((a, b) => {
-        let idxA = savedFolderOrder.indexOf(a);
-        let idxB = savedFolderOrder.indexOf(b);
-        if (idxA === -1) idxA = 999;
-        if (idxB === -1) idxB = 999;
-        return idxA - idxB;
+        let minA = Math.min(...foldersMap[a].map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
+        let minB = Math.min(...foldersMap[b].map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
+        return minA - minB;
       });
     }
 
@@ -960,17 +956,29 @@ function renderCourseList(){
     render();
   };
 
-  // Botones para subir/bajar carpetas enteras
+  // Botones para subir/bajar carpetas enteras actualizando folderOrderIndex en Firebase
   content.querySelectorAll('.move-up-folder').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
       const fName = btn.getAttribute('data-folder-name');
-      let fKeys = folderNamesKeys;
+      let fKeys = [...folderNamesKeys];
       let idx = fKeys.indexOf(fName);
       if (idx > 0) {
         let temp = fKeys[idx]; fKeys[idx] = fKeys[idx - 1]; fKeys[idx - 1] = temp;
-        appState.folderCustomOrder = fKeys;
+        
+        // Guardar el nuevo orden de carpetas asignando folderOrderIndex a cada curso
+        for (let i = 0; i < fKeys.length; i++) {
+          let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
+          for (let fc of currentFolderCourses) {
+            let cObj = await Backend.getCourse(fc.id);
+            if (cObj) {
+              cObj.folderOrderIndex = i;
+              await Backend.saveCourse(cObj);
+            }
+          }
+        }
         appState.sortBy = 'custom';
+        await loadList();
         renderCourseList();
       }
     };
@@ -980,12 +988,23 @@ function renderCourseList(){
     btn.onclick = async (e) => {
       e.stopPropagation();
       const fName = btn.getAttribute('data-folder-name');
-      let fKeys = folderNamesKeys;
+      let fKeys = [...folderNamesKeys];
       let idx = fKeys.indexOf(fName);
       if (idx < fKeys.length - 1) {
         let temp = fKeys[idx]; fKeys[idx] = fKeys[idx + 1]; fKeys[idx + 1] = temp;
-        appState.folderCustomOrder = fKeys;
+        
+        for (let i = 0; i < fKeys.length; i++) {
+          let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
+          for (let fc of currentFolderCourses) {
+            let cObj = await Backend.getCourse(fc.id);
+            if (cObj) {
+              cObj.folderOrderIndex = i;
+              await Backend.saveCourse(cObj);
+            }
+          }
+        }
         appState.sortBy = 'custom';
+        await loadList();
         renderCourseList();
       }
     };
@@ -1414,7 +1433,6 @@ function updateResults(course){
     panel.innerHTML = buildResultsHtml(course);
     wireResultsEvents(course);
   } else {
-    // Reconstruimos el panel pero guardando el foco del input de umbral exacto
     const thresholdInput = document.getElementById('threshold-input');
     const currentTypingValue = thresholdInput ? thresholdInput.value : null;
     const isFocused = document.activeElement && document.activeElement.id === 'threshold-input';
@@ -1503,14 +1521,12 @@ function wireResultsEvents(course) {
 
   const thresholdInp = document.getElementById('threshold-input');
   if (thresholdInp) {
-    // Usamos el evento 'input' pero actualizando directamente el estado y re-renderizando de forma optimizada
     thresholdInp.addEventListener('input', (e)=>{ 
       const raw = e.target.value;
       if (raw !== '' && !isNaN(raw)) {
         course.threshold = parseFloat(raw);
         if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
         
-        // Recalcular solamente la tarjeta de resultados interna para mantener el foco activo sin interrupciones
         const innerCard = document.getElementById('results-inner-card');
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = buildResultsHtml(course);
