@@ -1595,6 +1595,14 @@ async function init(){
   const viewId = urlParams.get('view');
 
   if (firebaseAvailable) {
+      // 1. Capturar errores o completar el login al volver de Google
+      try {
+          await firebaseAuth.getRedirectResult();
+      } catch(e) {
+          console.error("Error en redirección:", e);
+      }
+
+      // 2. Escuchar el cambio de estado de autenticación
       firebaseAuth.onAuthStateChanged(async (user) => {
           appState.currentUser = user;
           
@@ -1603,7 +1611,11 @@ async function init(){
              const doc = await firestoreDb.collection('cursos').doc(viewId).get();
              if (doc.exists && doc.data().isPublic) {
                  appState.openCourse = Object.assign({ id: viewId }, doc.data());
-             } else { alert("Este curso es privado o no existe."); window.location.href = window.location.pathname; return;}
+             } else { 
+                 alert("Este curso es privado o no existe."); 
+                 window.location.href = window.location.pathname; 
+                 return;
+             }
           }
           
           render();
