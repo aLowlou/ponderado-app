@@ -327,6 +327,8 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     maxScale: 20,
     ownerId: ownerId || null,
     isPublic: false,
+    isDeleted: false,
+    deletedAt: null,
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null },
     createdAt: Date.now(),
@@ -340,6 +342,8 @@ function migrateCourse(course){
   if (!course.folder) course.folder = 'General';
   if (typeof course.orderIndex !== 'number') course.orderIndex = 0;
   if (typeof course.folderOrderIndex !== 'number') course.folderOrderIndex = 0;
+  if (typeof course.isDeleted !== 'boolean') course.isDeleted = false;
+  if (!course.deletedAt) course.deletedAt = null;
   if (!course.createdAt) course.createdAt = course.updatedAt || Date.now();
   if (!Array.isArray(course.trabajos)) course.trabajos = [];
   for (const t of course.trabajos){
@@ -385,8 +389,10 @@ const appState = {
   viewOnlyMode: false,
   tab: 'saved',
   coursesIndex: [],
+  trashIndex: [],
   openCourse: null,
   activeFolderView: null,
+  activeTrashView: false,
   quickCourse: defaultCourse('Cálculo rápido', null),
   loadingList: true,
   sortBy: 'custom',
@@ -399,9 +405,14 @@ const Backend = {
     const snap = await firestoreDb.collection('cursos')
           .where('ownerId', '==', appState.currentUser.uid)
           .get();
-    const list = snap.docs.map(d => {
+    const activeList = [];
+    const trashList = [];
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    for (const d of snap.docs) {
        const data = d.data();
-       return { 
+       const item = { 
          id: d.id, 
          name: data.name || 'Sin nombre', 
          folder: data.folder || 'General',
@@ -409,10 +420,23 @@ const Backend = {
          folderOrderIndex: typeof data.folderOrderIndex === 'number' ? data.folderOrderIndex : 0,
          updatedAt: data.updatedAt || 0,
          createdAt: data.createdAt || 0,
+         isDeleted: !!data.isDeleted,
+         deletedAt: data.deletedAt || null,
          totalGrade: getAnalysis(data, 0, 0).total
        };
-    });
-    return list;
+
+       if (item.isDeleted) {
+         if (item.deletedAt && (now - item.deletedAt) > THIRTY_DAYS_MS) {
+           firestoreDb.collection('cursos').doc(d.id).delete().catch(()=>{});
+         } else {
+           trashList.push(item);
+         }
+       } else {
+         activeList.push(item);
+       }
+    }
+    appState.trashIndex = trashList;
+    return activeList;
   },
   async getCourse(id){
     if (!firebaseAvailable) return null;
@@ -428,7 +452,25 @@ const Backend = {
     delete data.id;
     await firestoreDb.collection('cursos').doc(course.id).set(data);
   },
-  async deleteCourse(id){
+  async softDeleteCourse(id){
+    if (!firebaseAvailable) return;
+    const fullC = await Backend.getCourse(id);
+    if (fullC) {
+      fullC.isDeleted = true;
+      fullC.deletedAt = Date.now();
+      await Backend.saveCourse(fullC);
+    }
+  },
+  async restoreCourse(id){
+    if (!firebaseAvailable) return;
+    const fullC = await Backend.getCourse(id);
+    if (fullC) {
+      fullC.isDeleted = false;
+      fullC.deletedAt = null;
+      await Backend.saveCourse(fullC);
+    }
+  },
+  async deleteCoursePermanent(id){
     if (!firebaseAvailable) return;
     await firestoreDb.collection('cursos').doc(id).delete();
   }
@@ -548,11 +590,12 @@ function render(){
     </div>
     <div id="tab-content"></div>
   `;
-  document.getElementById('tab-saved').onclick = () => { appState.tab='saved'; appState.openCourse=null; appState.activeFolderView=null; render(); loadList(); };
-  document.getElementById('tab-quick').onclick = () => { appState.tab='quick'; appState.activeFolderView=null; render(); };
+  document.getElementById('tab-saved').onclick = () => { appState.tab='saved'; appState.openCourse=null; appState.activeFolderView=null; appState.activeTrashView=false; render(); loadList(); };
+  document.getElementById('tab-quick').onclick = () => { appState.tab='quick'; appState.activeFolderView=null; appState.activeTrashView=false; render(); };
 
   if (appState.tab === 'saved'){
     if (appState.openCourse) renderEditorScreen(appState.openCourse, true);
+    else if (appState.activeTrashView) renderTrashView();
     else if (appState.activeFolderView !== null) renderFolderView(appState.activeFolderView);
     else renderCourseList();
   } else {
@@ -560,7 +603,7 @@ function render(){
   }
 }
 
-/* --- Autenticación Híbrida --- */
+/* --- Autenticación --- */
 function toggleAuthForm() {
     const login = document.getElementById('login-form');
     const reg = document.getElementById('register-form');
@@ -571,13 +614,8 @@ async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         await firebaseAuth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
-        
-        const provider = new firebase.auth.GoogleAuthProvider();
-        // Usamos popup como método principal para evitar el bloqueo de cookies cruzadas entre Vercel y Firebase
-        await firebaseAuth.signInWithPopup(provider);
-        
+        await firebaseAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
     } catch(e) { 
-        // Solo si el navegador bloquea explícitamente el popup (ej. Safari estricto en iOS), intentamos redirección
         if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
             await firebaseAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
         } else {
@@ -603,7 +641,16 @@ async function registerEmail() {
         await firebaseAuth.createUserWithEmailAndPassword(e, p);
     } catch(err) { alert(err.message); }
 }
-function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.tab = 'saved'; }
+function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.activeTrashView = false; appState.tab = 'saved'; }
+
+/* --- Helper para Papelera (Tiempo restante) --- */
+function daysLeftInTrash(deletedAt) {
+  if (!deletedAt) return '30 días';
+  const elapsed = Date.now() - deletedAt;
+  const remainingMs = (30 * 24 * 60 * 60 * 1000) - elapsed;
+  const days = Math.max(1, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
+  return `${days} día${days === 1 ? '' : 's'}`;
+}
 
 /* --- Modal Selectivo para Exportar en Lote --- */
 function openExportModal() {
@@ -655,6 +702,124 @@ function openExportModal() {
   };
 }
 
+/* --- Vista de Papelera / Eliminados --- */
+function renderTrashView() {
+  const content = document.getElementById('tab-content');
+  const PERM_WARN = "¿Seguro que deseas eliminar permanentemente? \n(No podrás volver a recuperar tus carpetas y/o notas)";
+
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <button class="back-btn" id="trash-back-btn">‹ Volver a Mis Cursos</button>
+      <button class="io-btn" id="empty-trash-btn" style="border-color:rgba(255,107,129,.3); color:var(--danger);" ${appState.trashIndex.length===0?'disabled':''}>🗑️ Vaciar Papelera</button>
+    </div>
+    
+    <div class="card" style="margin-bottom:16px;">
+      <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;">🗑️ Papelera / Eliminados</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin:0;">Los elementos se eliminan automáticamente de forma permanente después de 30 días.</p>
+    </div>
+  `;
+
+  if (appState.trashIndex.length === 0) {
+    html += `<div class="card empty"><p>La papelera está vacía.</p></div>`;
+  } else {
+    let foldersMap = {};
+    appState.trashIndex.forEach(c => {
+      let f = c.folder || 'General';
+      if (!foldersMap[f]) foldersMap[f] = [];
+      foldersMap[f].push(c);
+    });
+
+    for (const [folderName, courses] of Object.entries(foldersMap)) {
+      html += `
+        <div class="folder-container" style="border-color:rgba(255,255,255,.05); background:rgba(20,26,46,.5);">
+          <div class="folder-header">
+            <span class="folder-title" style="color:var(--text-dim);">📁 ${escapeHtml(folderName)} (${courses.length})</span>
+            <div style="display:flex; gap:6px;">
+              <button class="io-btn restore-folder-btn" data-restore-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar toda la carpeta">↺ Restaurar carpeta</button>
+              <button class="io-btn delete-folder-perm-btn" data-del-folder-perm="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--danger); border-color:rgba(255,107,129,.3);" title="Eliminar para siempre">✕ Eliminar carpeta</button>
+            </div>
+          </div>
+          <div class="folder-content">
+      `;
+      courses.forEach(c => {
+        html += `
+          <div class="course-row" style="margin-bottom:6px; cursor:default; opacity:0.85;">
+            <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
+            <div class="meta">Nota: ${formatNum(c.totalGrade)} | Se eliminará en ${daysLeftInTrash(c.deletedAt)}</div></div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura">↺ Restaurar</button>
+              <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente">✕</button>
+            </div>
+          </div>`;
+      });
+      html += `</div></div>`;
+    }
+  }
+
+  content.innerHTML = html;
+
+  document.getElementById('trash-back-btn').onclick = () => {
+    appState.activeTrashView = false;
+    render();
+    loadList();
+  };
+
+  const emptyBtn = document.getElementById('empty-trash-btn');
+  if (emptyBtn) {
+    emptyBtn.onclick = async () => {
+      if (appState.trashIndex.length === 0) return;
+      if (!confirm(PERM_WARN)) return;
+      for (const cMeta of appState.trashIndex) {
+        await Backend.deleteCoursePermanent(cMeta.id);
+      }
+      await loadList();
+      renderTrashView();
+    };
+  }
+
+  content.querySelectorAll('.restore-folder-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const fName = btn.getAttribute('data-restore-folder');
+      const fCourses = appState.trashIndex.filter(c => (c.folder || 'General') === fName);
+      for (const cMeta of fCourses) {
+        await Backend.restoreCourse(cMeta.id);
+      }
+      await loadList();
+      renderTrashView();
+    };
+  });
+
+  content.querySelectorAll('.delete-folder-perm-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(PERM_WARN)) return;
+      const fName = btn.getAttribute('data-del-folder-perm');
+      const fCourses = appState.trashIndex.filter(c => (c.folder || 'General') === fName);
+      for (const cMeta of fCourses) {
+        await Backend.deleteCoursePermanent(cMeta.id);
+      }
+      await loadList();
+      renderTrashView();
+    };
+  });
+
+  content.querySelectorAll('.restore-course-btn').forEach(btn => {
+    btn.onclick = async () => {
+      await Backend.restoreCourse(btn.getAttribute('data-restore-course'));
+      await loadList();
+      renderTrashView();
+    };
+  });
+
+  content.querySelectorAll('.delete-course-perm-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(PERM_WARN)) return;
+      await Backend.deleteCoursePermanent(btn.getAttribute('data-del-course-perm'));
+      await loadList();
+      renderTrashView();
+    };
+  });
+}
+
 /* --- Vista de Carpeta Detallada --- */
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
@@ -674,6 +839,7 @@ function renderFolderView(folderName) {
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
       <button class="back-btn" id="folder-back-btn">‹ Volver a Mis Cursos</button>
       <div style="display:flex; gap:8px;">
+        <button class="io-btn" id="delete-this-folder" style="border-color:rgba(255,107,129,.3); color:var(--danger);" title="Mover carpeta a papelera">🗑️ Eliminar carpeta</button>
         <button class="io-btn" id="export-this-folder">📤 Exportar carpeta</button>
       </div>
     </div>
@@ -716,7 +882,7 @@ function renderFolderView(folderName) {
               <button class="icon-btn move-down-course" data-course-id="${c.id}" title="Bajar" ${idx === folderCourses.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
             ` : ''}
             <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
-            <button class="icon-btn" data-del="${c.id}">✕</button>
+            <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
           </div>
         </div>`;
     });
@@ -728,6 +894,19 @@ function renderFolderView(folderName) {
 
   document.getElementById('folder-back-btn').onclick = () => { appState.activeFolderView = null; render(); loadList(); };
   
+  const delFolderBtn = document.getElementById('delete-this-folder');
+  if (delFolderBtn) {
+    delFolderBtn.onclick = async () => {
+      if (!confirm(`¿Mover la carpeta "${folderName}" y todas sus asignaturas a la papelera?`)) return;
+      for (const cMeta of folderCourses) {
+        await Backend.softDeleteCourse(cMeta.id);
+      }
+      appState.activeFolderView = null;
+      render();
+      loadList();
+    };
+  }
+
   document.getElementById('edit-folder-inside-btn').onclick = () => {
     const textSpan = document.getElementById('folder-view-text');
     let input = document.createElement('input');
@@ -830,8 +1009,8 @@ function renderFolderView(folderName) {
   content.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm('¿Eliminar este curso?')) return;
-      await Backend.deleteCourse(el.getAttribute('data-del'));
+      if (!confirm('¿Mover esta asignatura a la papelera?')) return;
+      await Backend.softDeleteCourse(el.getAttribute('data-del'));
       loadList().then(() => renderFolderView(folderName));
     });
   });
@@ -864,7 +1043,7 @@ function renderCourseList(){
 
   html += `
     <div class="toolbar-panel">
-      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
+      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:180px;">
         <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar carpetas:</span>
         <select id="sort-select" style="padding:6px 10px; font-size:12px;">
           <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Subir / Bajar)</option>
@@ -873,6 +1052,7 @@ function renderCourseList(){
         </select>
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="io-btn" id="open-trash-btn" style="border-color:rgba(255,180,84,.3); color:var(--warn);" title="Asignaturas y carpetas eliminadas">🗑️ Papelera (${appState.trashIndex.length})</button>
         <button class="io-btn" id="export-selected-btn" title="Exportar seleccionadas">📤 Exportar</button>
         <button class="io-btn" id="export-all-btn" title="Exportar todo">📤 Todo</button>
         <button class="io-btn" id="import-global-btn" title="Importar JSON">📥 Importar</button>
@@ -922,6 +1102,7 @@ function renderCourseList(){
                 <button class="icon-btn move-down-folder" data-folder-name="${escapeAttr(folderName)}" title="Bajar carpeta" ${fIdx === folderNamesKeys.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
               ` : ''}
               <button class="icon-btn folder-edit-btn" data-folder-target="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
+              <button class="icon-btn folder-delete-btn" data-del-folder="${escapeAttr(folderName)}" title="Mover carpeta a papelera" style="color:var(--danger);">🗑️</button>
               <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
             </div>
           </div>
@@ -933,7 +1114,7 @@ function renderCourseList(){
             <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
             <div style="display:flex; gap:6px; align-items:center;">
               <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
-              <button class="icon-btn" data-del="${c.id}">✕</button>
+              <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
             </div>
           </div>`;
       });
@@ -953,6 +1134,11 @@ function renderCourseList(){
   document.getElementById('sort-select').onchange = (e) => {
     appState.sortBy = e.target.value;
     renderCourseList();
+  };
+
+  document.getElementById('open-trash-btn').onclick = () => {
+    appState.activeTrashView = true;
+    render();
   };
 
   document.getElementById('export-selected-btn').onclick = () => openExportModal();
@@ -1044,6 +1230,19 @@ function renderCourseList(){
       };
       input.onblur = saveNewName;
       input.onkeydown = (ev) => { if (ev.key === 'Enter') saveNewName(); };
+    };
+  });
+
+  content.querySelectorAll('.folder-delete-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const folderName = btn.getAttribute('data-del-folder');
+      if (!confirm(`¿Mover la carpeta "${folderName}" y todas sus asignaturas a la papelera?`)) return;
+      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+      for (const cMeta of folderCourses) {
+        await Backend.softDeleteCourse(cMeta.id);
+      }
+      loadList();
     };
   });
 
@@ -1146,8 +1345,8 @@ function renderCourseList(){
   content.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm('¿Eliminar este curso guardado? Esta acción no se puede deshacer.')) return;
-      await Backend.deleteCourse(el.getAttribute('data-del')); loadList();
+      if (!confirm('¿Mover esta asignatura a la papelera?')) return;
+      await Backend.softDeleteCourse(el.getAttribute('data-del')); loadList();
     });
   });
 
@@ -1159,10 +1358,10 @@ function renderCourseList(){
 
 async function loadList(){
   appState.loadingList = true;
-  if (appState.tab === 'saved' && !appState.openCourse && appState.activeFolderView === null) renderCourseList();
+  if (appState.tab === 'saved' && !appState.openCourse && !appState.activeTrashView && appState.activeFolderView === null) renderCourseList();
   try{ appState.coursesIndex = await Backend.listCourses(); }catch(e){ appState.coursesIndex = []; }
   appState.loadingList = false;
-  if (appState.tab === 'saved' && !appState.openCourse && appState.activeFolderView === null) renderCourseList();
+  if (appState.tab === 'saved' && !appState.openCourse && !appState.activeTrashView && appState.activeFolderView === null) renderCourseList();
 }
 
 /* --- EDITOR DE CURSO --- */
@@ -1598,13 +1797,6 @@ async function init(){
   const viewId = urlParams.get('view');
 
   if (firebaseAvailable) {
-      // Manejar respuesta de inicio de sesión por redirección al regresar de Safari/móvil
-      try {
-          await firebaseAuth.getRedirectResult();
-      } catch(e) {
-          console.error("Error al procesar el redireccionamiento:", e);
-      }
-
       firebaseAuth.onAuthStateChanged(async (user) => {
           appState.currentUser = user;
           
