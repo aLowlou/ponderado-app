@@ -205,6 +205,50 @@
   .share-btn:hover, .io-btn:hover { background: rgba(53, 199, 242, 0.2); }
   .read-only-banner { background: rgba(255, 180, 84, 0.1); border: 1px solid rgba(255, 180, 84, 0.3); color: var(--warn); padding: 12px; border-radius: 16px; text-align: center; font-size: 13px; margin-bottom: 24px; }
   
+  /* Switch visual de visibilidad */
+  .vis-switch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 4px 10px 4px 4px;
+    border-radius: var(--r-pill);
+    font-size: 12px;
+    font-weight: 700;
+    transition: all 0.2s ease;
+  }
+  .vis-switch.public {
+    background: rgba(52, 229, 176, 0.12);
+    border-color: rgba(52, 229, 176, 0.4);
+    color: var(--success);
+  }
+  .vis-switch.private {
+    background: rgba(141, 149, 172, 0.1);
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+  .vis-switch .knob-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--card-inset);
+    transition: all 0.2s ease;
+  }
+  .vis-switch.public .knob-icon {
+    background: var(--success);
+    color: #070a14;
+  }
+  .vis-switch.private .knob-icon {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+  }
+
   .back-btn{background:var(--card);border:1px solid var(--border);color:var(--text-dim);border-radius:var(--r-pill); padding:9px 15px;font-size:12.5px;cursor:pointer;font-weight:600;}
   .back-btn:hover{color:var(--text);border-color:var(--border-strong);}
   .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
@@ -1371,7 +1415,22 @@ function renderEditorScreen(course, persist){
 
   if (appState.viewOnlyMode) {
       html += `<div class="read-only-banner">👀 Estás viendo la calculadora de otra persona en Modo Solo Lectura. No puedes hacer cambios.</div>`;
-      html += `<div class="back-row"><button class="pill pill-primary" onclick="window.location.href=window.location.pathname">Ir a mi propia calculadora</button></div>`;
+      html += `<div style="margin-bottom:16px;"><button class="pill pill-primary" onclick="window.location.href=window.location.pathname">Ir a mi propia calculadora</button></div>`;
+      html += `
+        <div class="card card-tight" style="margin-bottom: 24px; display:flex; gap:16px; flex-wrap:wrap; align-items:center; border:1px solid rgba(124,92,255,.3); background:rgba(124,92,255,.04);">
+          <div style="flex:2; min-width:180px;">
+            <label class="f-label">Asignatura / Curso</label>
+            <div style="font-family:var(--display); font-size:24px; font-weight:800; color:var(--text);">${escapeHtml(course.name || 'Sin nombre')}</div>
+          </div>
+          <div style="flex:1; min-width:120px;">
+            <label class="f-label">Carpeta / Ciclo</label>
+            <div style="font-size:15px; font-weight:600; color:var(--text-dim);">📁 ${escapeHtml(course.folder || 'General')}</div>
+          </div>
+          <div style="flex:1; min-width:100px;">
+            <label class="f-label">Escala Máxima</label>
+            <div style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--a2);">${course.maxScale || 20}</div>
+          </div>
+        </div>`;
   }
 
   if (persist && !appState.viewOnlyMode){
@@ -1382,13 +1441,35 @@ function renderEditorScreen(course, persist){
            <button class="io-btn" id="export-btn" title="Exportar curso">📤 Exportar</button>
            <button class="io-btn" id="import-btn" title="Importar datos">📥 Importar</button>
            <input type="file" id="import-file-input" accept=".json" style="display:none">
+           
+           <div class="vis-switch ${course.isPublic ? 'public' : 'private'}" id="visibility-toggle-btn" title="Cambiar visibilidad (Público / Privado)">
+             <div class="knob-icon">
+               ${course.isPublic ? 
+                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : 
+                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'}
+             </div>
+             <span class="vis-label">${course.isPublic ? 'Público' : 'Privado'}</span>
+           </div>
+
            <button class="share-btn" id="share-btn">
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-             ${course.isPublic ? 'Enlace activado' : 'Compartir'}
+             Compartir
            </button>
            <span class="save-flag" id="save-flag">GUARDADO ✓</span>
         </div>
       </div>
+
+      <div id="share-link-box" style="display:none; background:var(--card); border:1px solid rgba(53,199,242,.4); border-radius:18px; padding:14px 18px; margin-bottom:18px; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:220px;">
+          <span style="font-size:12px; color:var(--a2); font-weight:700;">🔗 Enlace público:</span>
+          <input type="text" readonly id="share-url-input" style="background:var(--card-inset); border:1px solid var(--border); border-radius:10px; padding:8px 12px; flex:1; color:var(--text); font-family:var(--mono); font-size:12px; outline:none;" value="">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="pill pill-primary small" id="copy-share-url-btn">Copiar enlace</button>
+          <button class="icon-btn" id="close-share-box-btn" title="Cerrar">✕</button>
+        </div>
+      </div>
+
       <div class="card card-tight" style="margin-bottom: 24px; display:flex; gap:12px; flex-wrap:wrap;">
         <div style="flex:2; min-width:180px;">
           <label class="f-label">Nombre del curso</label>
@@ -1484,17 +1565,74 @@ function renderEditorScreen(course, persist){
         reader.readAsText(file);
     };
 
-    document.getElementById('share-btn').onclick = () => {
-        if (!course.isPublic) {
-            if(confirm("¿Permitir que cualquier persona con el enlace vea tus notas de este curso? (Solo lectura)")) {
-                course.isPublic = true; persistCourse(course); document.getElementById('share-btn').innerHTML = 'Enlace activado';
-                alert("Enlace público creado:\n\n" + window.location.origin + window.location.pathname + "?view=" + course.id);
-            }
-        } else {
-            prompt("Copia este enlace para compartir tus notas:", window.location.origin + window.location.pathname + "?view=" + course.id);
-            if(confirm("¿Quieres volver a hacer privado este curso? El enlace dejará de funcionar.")) { course.isPublic = false; persistCourse(course); document.getElementById('share-btn').innerHTML = 'Compartir';}
-        }
+    // Lógica del interruptor visual de visibilidad
+    const visToggleBtn = document.getElementById('visibility-toggle-btn');
+    const updateVisibilityUI = () => {
+      if (!visToggleBtn) return;
+      if (course.isPublic) {
+        visToggleBtn.className = 'vis-switch public';
+        visToggleBtn.querySelector('.knob-icon').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+        visToggleBtn.querySelector('.vis-label').textContent = 'Público';
+      } else {
+        visToggleBtn.className = 'vis-switch private';
+        visToggleBtn.querySelector('.knob-icon').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+        visToggleBtn.querySelector('.vis-label').textContent = 'Privado';
+      }
     };
+
+    if (visToggleBtn) {
+      visToggleBtn.onclick = () => {
+        course.isPublic = !course.isPublic;
+        updateVisibilityUI();
+        persistCourse(course);
+        const shareBox = document.getElementById('share-link-box');
+        if (!course.isPublic && shareBox) {
+          shareBox.style.display = 'none';
+        }
+      };
+    }
+
+    // Lógica para el botón Compartir sin prompt flotante
+    const shareBtn = document.getElementById('share-btn');
+    const shareBox = document.getElementById('share-link-box');
+    const shareUrlInput = document.getElementById('share-url-input');
+    const copyBtn = document.getElementById('copy-share-url-btn');
+    const closeBoxBtn = document.getElementById('close-share-box-btn');
+
+    if (shareBtn && shareBox && shareUrlInput) {
+      shareBtn.onclick = () => {
+        if (!course.isPublic) {
+          course.isPublic = true;
+          updateVisibilityUI();
+          persistCourse(course);
+        }
+        const fullUrl = window.location.origin + window.location.pathname + "?view=" + course.id;
+        shareUrlInput.value = fullUrl;
+        shareBox.style.display = 'flex';
+        shareUrlInput.select();
+      };
+    }
+
+    if (copyBtn && shareUrlInput) {
+      copyBtn.onclick = () => {
+        const text = shareUrlInput.value;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text);
+        } else {
+          shareUrlInput.select();
+          document.execCommand('copy');
+        }
+        const origText = copyBtn.textContent;
+        copyBtn.textContent = '¡Copiado! ✓';
+        setTimeout(() => { copyBtn.textContent = origText; }, 1500);
+      };
+    }
+
+    if (closeBoxBtn && shareBox) {
+      closeBoxBtn.onclick = () => {
+        shareBox.style.display = 'none';
+      };
+    }
 
   } else if (!appState.viewOnlyMode && !persist) {
     document.getElementById('reset-quick-btn').onclick = () => { appState.quickCourse = defaultCourse('Cálculo rápido'); render(); };
