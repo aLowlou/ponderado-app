@@ -777,7 +777,7 @@ function renderTrashView() {
       html += `
         <div class="folder-container" style="border-color:rgba(255,255,255,.05); background:rgba(20,26,46,.5);">
           <div class="folder-header">
-            <span class="folder-title" style="color:var(--text-dim);">📁 ${escapeHtml(folderName)} (${courses.length})</span>
+            <span class="folder-title" style="color:var(--text-dim);">📁 ${escapeHtml(folderName)}</span>
             <div style="display:flex; gap:6px;">
               <button class="io-btn restore-folder-btn" data-restore-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar toda la carpeta">↺ Restaurar carpeta</button>
               <button class="io-btn delete-folder-perm-btn" data-del-folder-perm="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--danger); border-color:rgba(255,107,129,.3);" title="Eliminar para siempre">✕ Eliminar carpeta</button>
@@ -789,7 +789,7 @@ function renderTrashView() {
         html += `
           <div class="course-row" style="margin-bottom:6px; cursor:default; opacity:0.85;">
             <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-            <div class="meta">Nota: ${formatNum(c.totalGrade)} | Se eliminará en ${daysLeftInTrash(c.deletedAt)}</div></div>
+            <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | Se eliminará en ${daysLeftInTrash(c.deletedAt)}</div></div>
             <div style="display:flex; gap:6px; align-items:center;">
               <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura">↺ Restaurar</button>
               <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente">✕</button>
@@ -919,7 +919,7 @@ function renderFolderView(folderName) {
       html += `
         <div class="course-row" data-open="${c.id}" style="margin-bottom:10px;">
           <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-          <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+          <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
           <div style="display:flex; gap:4px; align-items:center;">
             ${appState.folderSortBy === 'custom' ? `
               <button class="icon-btn move-up-course" data-course-id="${c.id}" title="Subir" ${idx === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
@@ -1138,7 +1138,6 @@ function renderCourseList(){
           <div class="folder-header">
             <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
               <span class="folder-title">📁 <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
-              <span style="font-size:12px; color:var(--text-dim); font-weight:normal;">(${courses.length})</span>
             </div>
             <div style="display:flex; gap:4px; align-items:center;">
               ${appState.sortBy === 'custom' ? `
@@ -1155,7 +1154,7 @@ function renderCourseList(){
       courses.forEach(c => {
         html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
             <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-            <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+            <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
             <div style="display:flex; gap:6px; align-items:center;">
               <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
               <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
