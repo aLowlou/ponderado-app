@@ -131,9 +131,10 @@
   .pill.small{padding:8px 14px;font-size:12px;}
 
   label.f-label{display:block;font-family:var(--mono);font-size:10px;color:var(--text-faint);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
-  input[type=text], input[type=number], input[type=password]{ width:100%;background:var(--card-inset);border:1px solid transparent;border-radius:var(--r-input); color:var(--text);font-family:var(--sans);font-size:14.5px;padding:11px 14px;transition:border-color .15s; }
-  input:focus{outline:none;border-color:rgba(124,92,255,.55);}
+  input[type=text], input[type=number], input[type=password], select{ width:100%;background:var(--card-inset);border:1px solid transparent;border-radius:var(--r-input); color:var(--text);font-family:var(--sans);font-size:14.5px;padding:11px 14px;transition:border-color .15s; }
+  input:focus, select:focus{outline:none;border-color:rgba(124,92,255,.55);}
   input.title-input{font-family:var(--display);font-size:19px;font-weight:600;background:transparent;padding:6px 2px;}
+  select{cursor:pointer;}
 
   .ruler{display:flex;height:12px;border-radius:var(--r-pill);overflow:hidden;background:var(--card-inset);margin:12px 0 8px;gap:2px;}
   .ruler .seg{height:100%;border-radius:2px;transition:width .2s;}
@@ -222,6 +223,13 @@
   .course-row:hover{border-color:rgba(124,92,255,.4);}
   .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
   .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
+
+  /* --- Estilos para Carpetas --- */
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; }
+  .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: pointer; }
+  .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text); }
+  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
+  .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -315,17 +323,21 @@ function defaultCourse(name, ownerId){
   return {
     id: uid(),
     name: name || 'Nuevo curso',
+    folder: 'General',
     threshold: 10.5,
     ownerId: ownerId || null,
     isPublic: false,
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null },
+    createdAt: Date.now(),
     updatedAt: Date.now()
   };
 }
 
 function migrateCourse(course){
   if (typeof course.threshold !== 'number') course.threshold = 10.5;
+  if (!course.folder) course.folder = 'General';
+  if (!course.createdAt) course.createdAt = course.updatedAt || Date.now();
   if (!Array.isArray(course.trabajos)) course.trabajos = [];
   for (const t of course.trabajos){
     if (typeof t.dropLowest !== 'boolean') t.dropLowest = false;
@@ -372,7 +384,8 @@ const appState = {
   coursesIndex: [],
   openCourse: null,
   quickCourse: defaultCourse('Cálculo rápido', null),
-  loadingList: true
+  loadingList: true,
+  sortBy: 'updated-desc' // Opciones: name-asc, name-desc, updated-desc, created-desc, grade-desc, grade-asc
 };
 
 const Backend = {
@@ -381,8 +394,17 @@ const Backend = {
     const snap = await firestoreDb.collection('cursos')
           .where('ownerId', '==', appState.currentUser.uid)
           .get();
-    const list = snap.docs.map(d => ({ id: d.id, name: d.data().name, updatedAt: d.data().updatedAt || 0 }));
-    list.sort((a,b)=>b.updatedAt-a.updatedAt);
+    const list = snap.docs.map(d => {
+       const data = d.data();
+       return { 
+         id: d.id, 
+         name: data.name || 'Sin nombre', 
+         folder: data.folder || 'General',
+         updatedAt: data.updatedAt || 0,
+         createdAt: data.createdAt || 0,
+         totalGrade: getAnalysis(data, 0, 0).total
+       };
+    });
     return list;
   },
   async getCourse(id){
@@ -394,6 +416,7 @@ const Backend = {
   async saveCourse(course){
     if (!firebaseAvailable || appState.viewOnlyMode) return;
     course.updatedAt = Date.now();
+    if(!course.createdAt) course.createdAt = course.updatedAt;
     const data = Object.assign({}, course);
     delete data.id;
     await firestoreDb.collection('cursos').doc(course.id).set(data);
@@ -444,14 +467,12 @@ function render(){
       </div>
     </div>`;
 
-  // Modo de Solo Lectura (Viendo curso de otro)
   if (appState.viewOnlyMode && appState.openCourse) {
       app.innerHTML = topBar + `<div id="tab-content"></div>`;
       renderEditorScreen(appState.openCourse, true);
       return;
   }
 
-  // Pantalla de Autenticación
   if (!appState.currentUser && appState.tab === 'saved') {
       if (!firebaseAvailable) {
           app.innerHTML = topBar + `
@@ -543,7 +564,6 @@ async function loginGoogle() {
     try {
         const rememberMe = document.getElementById('rememberMe') ? document.getElementById('rememberMe').checked : true;
         const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
-        
         await firebaseAuth.setPersistence(persistence);
         const provider = new firebase.auth.GoogleAuthProvider();
         await firebaseAuth.signInWithPopup(provider);
@@ -556,7 +576,6 @@ async function loginEmail() {
         const p = document.getElementById('auth-pass').value;
         const rememberMe = document.getElementById('rememberMe').checked;
         const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
-
         await firebaseAuth.setPersistence(persistence);
         await firebaseAuth.signInWithEmailAndPassword(e, p);
     } catch(err) { alert(err.message); }
@@ -568,7 +587,6 @@ async function registerEmail() {
         const p = document.getElementById('reg-pass').value;
         const rememberMe = document.getElementById('rememberMeReg').checked;
         const persistence = rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
-
         await firebaseAuth.setPersistence(persistence);
         await firebaseAuth.createUserWithEmailAndPassword(e, p);
     } catch(err) { alert(err.message); }
@@ -576,56 +594,151 @@ async function registerEmail() {
 
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.tab = 'saved'; }
 
-/* --- Renderizados de Lista --- */
+/* --- Renderizados de Lista con Carpetas y Ordenamiento --- */
 function renderCourseList(){
   const content = document.getElementById('tab-content');
   if (appState.loadingList){ content.innerHTML = `<div class="card empty"><p>Cargando cursos…</p></div>`; return; }
-  let html = '';
   
-  // Botón global de importar en la lista principal
+  let html = '';
+
+  // Toolbar superior: Filtro de orden y acciones globales en lote
   html += `
-    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-      <button class="pill pill-dashed block" id="import-global-btn" style="flex:1; padding:10px; font-size:12.5px;">📥 Importar curso (.json)</button>
-      <input type="file" id="global-file-input" accept=".json" style="display:none">
+    <div class="toolbar-panel">
+      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
+        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar:</span>
+        <select id="sort-select" style="padding:6px 10px; font-size:12px;">
+          <option value="updated-desc" ${appState.sortBy==='updated-desc'?'selected':''}>Última modificación</option>
+          <option value="created-desc" ${appState.sortBy==='created-desc'?'selected':''}>Fecha de creación</option>
+          <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
+          <option value="name-desc" ${appState.sortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
+          <option value="grade-desc" ${appState.sortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
+          <option value="grade-asc" ${appState.sortBy==='grade-asc'?'selected':''}>Menos nota a más nota</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="io-btn" id="export-all-btn" title="Exportar todos tus cursos">📤 Exportar Todo</button>
+        <button class="io-btn" id="import-global-btn" title="Importar JSON">📥 Importar</button>
+        <input type="file" id="global-file-input" accept=".json" multiple style="display:none">
+      </div>
     </div>
   `;
 
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    for (const c of appState.coursesIndex){
-      html += `<div class="course-row" data-open="${c.id}">
-          <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-          <div class="meta">Actualizado ${timeAgo(c.updatedAt)}</div></div>
-          <button class="icon-btn" data-del="${c.id}">✕</button>
-        </div>`;
+    // Ordenar elementos según appState.sortBy
+    let sortedList = [...appState.coursesIndex];
+    sortedList.sort((a, b) => {
+      if (appState.sortBy === 'name-asc') return a.name.localeCompare(b.name);
+      if (appState.sortBy === 'name-desc') return b.name.localeCompare(a.name);
+      if (appState.sortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
+      if (appState.sortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
+      if (appState.sortBy === 'created-desc') return b.createdAt - a.createdAt;
+      return b.updatedAt - a.updatedAt; // default updated-desc
+    });
+
+    // Agrupar por carpetas
+    let folders = {};
+    sortedList.forEach(c => {
+      let f = c.folder || 'General';
+      if (!folders[f]) folders[f] = [];
+      folders[f].push(c);
+    });
+
+    for (const [folderName, courses] of Object.entries(folders)) {
+      html += `
+        <div class="folder-container">
+          <div class="folder-header">
+            <div class="folder-title">📁 ${escapeHtml(folderName)} <span style="font-size:12px; color:var(--text-dim); font-weight:normal;">(${courses.length})</span></div>
+            <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
+          </div>
+          <div class="folder-content">
+      `;
+      for (const c of courses){
+        html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
+            <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
+            <div class="meta">Nota: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+            <button class="icon-btn" data-del="${c.id}">✕</button>
+          </div>`;
+      }
+      html += `</div></div>`;
     }
   }
-  html += `<button class="pill pill-primary block" id="new-course-btn">+ Nuevo curso</button>`;
+
+  html += `<button class="pill pill-primary block" id="new-course-btn" style="margin-top:16px;">+ Nuevo curso</button>`;
   content.innerHTML = html;
 
-  // Evento para importar desde la lista
+  // Eventos de ordenamiento
+  document.getElementById('sort-select').onchange = (e) => {
+    appState.sortBy = e.target.value;
+    renderCourseList();
+  };
+
+  // Evento Exportar Todo
+  document.getElementById('export-all-btn').onclick = async () => {
+    let fullData = [];
+    for (const cMeta of appState.coursesIndex) {
+      const fullC = await Backend.getCourse(cMeta.id);
+      if (fullC) fullData.push(fullC);
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullData, null, 2));
+    const dl = document.createElement('a');
+    dl.setAttribute("href", dataStr);
+    dl.setAttribute("download", `todos_mis_cursos_ponderado.json`);
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+  };
+
+  // Eventos Exportar Carpeta específica
+  content.querySelectorAll('[data-export-folder]').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const folderName = btn.getAttribute('data-export-folder');
+      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+      let fullFolderData = [];
+      for (const cMeta of folderCourses) {
+        const fullC = await Backend.getCourse(cMeta.id);
+        if (fullC) fullFolderData.push(fullC);
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullFolderData, null, 2));
+      const dl = document.createElement('a');
+      dl.setAttribute("href", dataStr);
+      dl.setAttribute("download", `carpeta_${folderName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_ponderado.json`);
+      document.body.appendChild(dl);
+      dl.click();
+      dl.remove();
+    };
+  });
+
+  // Evento Importar masivo / unitario
   const globalFileIn = document.getElementById('global-file-input');
   document.getElementById('import-global-btn').onclick = () => globalFileIn.click();
   globalFileIn.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const importedData = JSON.parse(event.target.result);
-        migrateCourse(importedData);
-        importedData.id = uid(); // Nuevo id para que no colisione
-        importedData.ownerId = appState.currentUser.uid; // Asignar al usuario actual
-        await Backend.saveCourse(importedData);
-        appState.openCourse = importedData;
-        render();
-        loadList();
-      } catch (err) {
-        alert("El archivo no es un curso válido.");
-      }
-    };
-    reader.readAsText(file);
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    for (const file of files) {
+      await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            let items = Array.isArray(parsed) ? parsed : [parsed];
+            for (let item of items) {
+              migrateCourse(item);
+              item.id = uid();
+              item.ownerId = appState.currentUser.uid;
+              await Backend.saveCourse(item);
+            }
+          } catch (err) { console.error(err); }
+          resolve();
+        };
+        reader.readAsText(file);
+      });
+    }
+    render();
+    loadList();
+    alert("¡Importación completada con éxito!");
   };
 
   content.querySelectorAll('[data-open]').forEach(el => {
@@ -636,6 +749,7 @@ function renderCourseList(){
       if (course){ migrateCourse(course); appState.openCourse = course; render(); }
     });
   });
+
   content.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -643,6 +757,7 @@ function renderCourseList(){
       await Backend.deleteCourse(el.getAttribute('data-del')); loadList();
     });
   });
+
   document.getElementById('new-course-btn').onclick = async () => {
     const course = defaultCourse('Nuevo curso', appState.currentUser.uid);
     await Backend.saveCourse(course); appState.openCourse = course; render();
@@ -672,8 +787,8 @@ function renderEditorScreen(course, persist){
       <div class="header-actions">
         <button class="back-btn" id="back-btn">‹ Mis cursos</button>
         <div class="action-buttons-group">
-           <button class="io-btn" id="export-btn" title="Exportar este curso a archivo JSON">📤 Exportar</button>
-           <button class="io-btn" id="import-btn" title="Importar datos a este curso">📥 Importar</button>
+           <button class="io-btn" id="export-btn" title="Exportar curso">📤 Exportar</button>
+           <button class="io-btn" id="import-btn" title="Importar datos">📥 Importar</button>
            <input type="file" id="import-file-input" accept=".json" style="display:none">
            <button class="share-btn" id="share-btn">
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
@@ -682,9 +797,15 @@ function renderEditorScreen(course, persist){
            <span class="save-flag" id="save-flag">GUARDADO ✓</span>
         </div>
       </div>
-      <div class="card card-tight" style="margin-bottom: 24px;">
-        <label class="f-label">Nombre del curso</label>
-        <input type="text" class="title-input" id="course-name" value="${escapeAttr(course.name)}" placeholder="Ej. Control Automático I" ${appState.viewOnlyMode ? 'disabled' : ''}>
+      <div class="card card-tight" style="margin-bottom: 24px; display:flex; gap:12px; flex-wrap:wrap;">
+        <div style="flex:2; min-width:200px;">
+          <label class="f-label">Nombre del curso</label>
+          <input type="text" class="title-input" id="course-name" value="${escapeAttr(course.name)}" placeholder="Ej. Control Automático I" ${appState.viewOnlyMode ? 'disabled' : ''}>
+        </div>
+        <div style="flex:1; min-width:140px;">
+          <label class="f-label">Carpeta / Ciclo</label>
+          <input type="text" id="course-folder" value="${escapeAttr(course.folder || 'General')}" placeholder="Ej. Ciclo 7" style="background:var(--card-inset); border:1px solid var(--border); padding:10px; border-radius:12px; color:white; font-size:14px;" ${appState.viewOnlyMode ? 'disabled' : ''}>
+        </div>
       </div>`;
   } else if (!appState.viewOnlyMode && !persist) {
     html += `
@@ -714,8 +835,8 @@ function renderEditorScreen(course, persist){
   if (persist && !appState.viewOnlyMode){
     document.getElementById('back-btn').onclick = () => { appState.openCourse = null; appState.tab='saved'; render(); loadList(); };
     document.getElementById('course-name').addEventListener('input', (e) => { course.name = e.target.value; debounceSave(course); });
+    document.getElementById('course-folder').addEventListener('input', (e) => { course.folder = e.target.value.trim() || 'General'; debounceSave(course); });
     
-    // Lógica de Exportación individual
     document.getElementById('export-btn').onclick = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(course, null, 2));
         const downloadAnchor = document.createElement('a');
@@ -726,7 +847,6 @@ function renderEditorScreen(course, persist){
         downloadAnchor.remove();
     };
 
-    // Lógica de Importación individual
     const fileInput = document.getElementById('import-file-input');
     document.getElementById('import-btn').onclick = () => fileInput.click();
     fileInput.onchange = (e) => {
@@ -737,21 +857,17 @@ function renderEditorScreen(course, persist){
             try {
                 const imported = JSON.parse(event.target.result);
                 migrateCourse(imported);
-                // Mantenemos el ID y owner actual pero sobrescribimos el contenido
                 imported.id = course.id;
                 imported.ownerId = appState.currentUser.uid;
                 appState.openCourse = imported;
                 await persistCourse(imported);
                 render();
                 alert("¡Curso importado con éxito!");
-            } catch (err) {
-                alert("El archivo seleccionado no es válido.");
-            }
+            } catch (err) { alert("El archivo seleccionado no es válido."); }
         };
         reader.readAsText(file);
     };
 
-    // Lógica de Compartir
     document.getElementById('share-btn').onclick = () => {
         if (!course.isPublic) {
             if(confirm("¿Permitir que cualquier persona con el enlace vea tus notas de este curso? (Solo lectura)")) {
@@ -997,7 +1113,6 @@ async function init(){
           appState.currentUser = user;
           
           if (viewId) {
-             // Modo ver curso compartido
              appState.viewOnlyMode = true;
              const doc = await firestoreDb.collection('cursos').doc(viewId).get();
              if (doc.exists && doc.data().isPublic) {
