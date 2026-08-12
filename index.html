@@ -290,7 +290,7 @@
   }
   .password-wrap input {
     width: 100%;
-    padding-right: 40px !important; /* Espacio para que el texto no tape el ojo */
+    padding-right: 40px !important; 
   }
   .toggle-eye-btn {
     position: absolute;
@@ -343,11 +343,17 @@ function getAnalysis(course, x_reg = 0, x_susti = 0) {
     let targetId = null;
     
     if (course.sustitutorio && course.sustitutorio.enabled && baseAvgs.length > 0) {
-        let sorted = [...baseAvgs].sort((a, b) => {
-            if (Math.abs(a.avg - b.avg) > 1e-9) return a.avg - b.avg;
-            return (Number(b.t.percentage)||0) - (Number(a.t.percentage)||0);
-        });
-        targetId = sorted[0].t.id;
+        // Verificar si hay un ID forzado (excepción manual) y si existe
+        if (course.sustitutorio.forcedTargetId && baseAvgs.some(a => a.t.id === course.sustitutorio.forcedTargetId)) {
+            targetId = course.sustitutorio.forcedTargetId;
+        } else {
+            // Automático: el más bajo
+            let sorted = [...baseAvgs].sort((a, b) => {
+                if (Math.abs(a.avg - b.avg) > 1e-9) return a.avg - b.avg;
+                return (Number(b.t.percentage)||0) - (Number(a.t.percentage)||0);
+            });
+            targetId = sorted[0].t.id;
+        }
     }
 
     const actualSustiVal = course.sustitutorio?.nota !== null ? course.sustitutorio.nota : x_susti;
@@ -412,7 +418,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isDeleted: false,
     deletedAt: null,
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
-    sustitutorio: { enabled: false, nota: null },
+    sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -432,7 +438,8 @@ function migrateCourse(course){
     if (typeof t.dropLowest !== 'boolean') t.dropLowest = false;
     if (!Array.isArray(t.notas)) t.notas = [];
   }
-  if (!course.sustitutorio) course.sustitutorio = { enabled: false, nota: null };
+  if (!course.sustitutorio) course.sustitutorio = { enabled: false, nota: null, forcedTargetId: null };
+  if (typeof course.sustitutorio.forcedTargetId === 'undefined') course.sustitutorio.forcedTargetId = null;
   if (typeof course.isPublic !== 'boolean') course.isPublic = false;
 }
 
@@ -702,7 +709,6 @@ function toggleAuthForm() {
     const login = document.getElementById('login-form');
     const reg = document.getElementById('register-form');
     
-    // Limpiar contraseñas por privacidad al cambiar de vista
     const authPass = document.getElementById('auth-pass');
     const regPass = document.getElementById('reg-pass');
     if (authPass) authPass.value = '';
@@ -763,7 +769,7 @@ async function registerEmail() {
 }
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.activeTrashView = false; appState.tab = 'saved'; }
 
-/* --- Helper para Papelera (Tiempo restante) --- */
+/* --- Helper para Papelera --- */
 function daysLeftInTrash(deletedAt) {
   if (!deletedAt) return '30 días';
   const elapsed = Date.now() - deletedAt;
@@ -772,7 +778,7 @@ function daysLeftInTrash(deletedAt) {
   return `${days} día${days === 1 ? '' : 's'}`;
 }
 
-/* --- Modal Selectivo para Exportar en Lote --- */
+/* --- Modal Selectivo para Exportar --- */
 function openExportModal() {
   let modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -1848,28 +1854,26 @@ function updateResults(course){
   const panel = document.getElementById('results-panel');
   if (!panel) return;
 
-  if (!panel.querySelector('.card')) {
-    panel.innerHTML = buildResultsHtml(course);
-    wireResultsEvents(course);
-  } else {
-    const thresholdInput = document.getElementById('threshold-input');
-    const currentTypingValue = thresholdInput ? thresholdInput.value : null;
-    const isFocused = document.activeElement && document.activeElement.id === 'threshold-input';
-    const selectionStart = isFocused ? thresholdInput.selectionStart : null;
-    const selectionEnd = isFocused ? thresholdInput.selectionEnd : null;
+  const activeId = document.activeElement && document.activeElement.tagName === 'INPUT' ? document.activeElement.id : null;
+  const currentTypingValue = activeId ? document.activeElement.value : null;
+  let selectionStart = null, selectionEnd = null;
+  
+  if (activeId) {
+    try { 
+      selectionStart = document.activeElement.selectionStart; 
+      selectionEnd = document.activeElement.selectionEnd; 
+    } catch(e) {}
+  }
 
-    panel.innerHTML = buildResultsHtml(course);
-    wireResultsEvents(course);
+  panel.innerHTML = buildResultsHtml(course);
+  wireResultsEvents(course);
 
-    if (isFocused) {
-      const newInp = document.getElementById('threshold-input');
-      if (newInp) {
-        if (currentTypingValue !== null) {
-          newInp.value = currentTypingValue;
-        }
-        newInp.focus();
-        if (selectionStart !== null) newInp.setSelectionRange(selectionStart, selectionEnd);
-      }
+  if (activeId === 'threshold-input' || activeId === 'susti-val') {
+    const freshInp = document.getElementById(activeId);
+    if (freshInp) {
+      freshInp.value = currentTypingValue;
+      freshInp.focus();
+      try { freshInp.setSelectionRange(selectionStart, selectionEnd); } catch(e) {}
     }
   }
 }
@@ -1891,7 +1895,23 @@ function buildResultsHtml(course) {
       ${course.sustitutorio?.enabled ? `
         <div class="nota-row" style="margin-top:16px;">
           <span class="idx" style="width:auto; margin-right:8px; font-size:12px; font-family:var(--sans); font-weight:600;">Nota:</span>
-          <input type="number" id="susti-val" class="n-val ${course.sustitutorio.nota===null?'is-pending':''}" value="${course.sustitutorio.nota===null?'':course.sustitutorio.nota}" placeholder="pendiente" step="0.01" ${dis}>
+          <input type="text" inputmode="decimal" id="susti-val" class="n-val ${course.sustitutorio.nota===null?'is-pending':''}" value="${course.sustitutorio.nota===null?'':course.sustitutorio.nota}" placeholder="pendiente" ${dis}>
+        </div>
+        
+        <div style="margin-top:16px; padding:12px; background:rgba(0,0,0,0.2); border-radius:12px; border:1px solid var(--border);">
+          <div style="font-size:11.5px; color:var(--text-dim); margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Excepciones: Selecciona el promedio a reemplazar</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text);">
+               <input type="radio" name="susti-target-${course.id}" class="susti-target-radio" value="" ${!course.sustitutorio.forcedTargetId ? 'checked' : ''} ${dis} style="width:16px; height:16px; margin:0; accent-color:var(--a1);">
+               <span>Automático <span style="color:var(--text-dim);">(el más bajo)</span></span>
+             </label>
+             ${course.trabajos.map(t => `
+               <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text);">
+                 <input type="radio" name="susti-target-${course.id}" class="susti-target-radio" value="${t.id}" ${course.sustitutorio.forcedTargetId === t.id ? 'checked' : ''} ${dis} style="width:16px; height:16px; margin:0; accent-color:var(--a1);">
+                 ${escapeHtml(t.name || 'Trabajo')}
+               </label>
+             `).join('')}
+          </div>
         </div>
       ` : ''}
     </div>
@@ -1941,30 +1961,11 @@ function wireResultsEvents(course) {
   const thresholdInp = document.getElementById('threshold-input');
   if (thresholdInp) {
     thresholdInp.addEventListener('input', (e)=>{ 
-      const raw = e.target.value;
+      const raw = e.target.value.replace(',', '.');
       if (raw !== '' && !isNaN(raw)) {
         course.threshold = parseFloat(raw);
         if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
-        
-        const innerCard = document.getElementById('results-inner-card');
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = buildResultsHtml(course);
-        const newCard = tempDiv.querySelector('#results-inner-card');
-        if (innerCard && newCard) {
-          const currentVal = thresholdInp.value;
-          const selectionStart = thresholdInp.selectionStart;
-          const selectionEnd = thresholdInp.selectionEnd;
-          
-          innerCard.replaceWith(newCard);
-          wireResultsEvents(course);
-          
-          const freshInp = document.getElementById('threshold-input');
-          if (freshInp) {
-            freshInp.value = currentVal;
-            freshInp.focus();
-            freshInp.setSelectionRange(selectionStart, selectionEnd);
-          }
-        }
+        updateResults(course);
       }
     });
   }
@@ -1977,7 +1978,11 @@ function wireResultsEvents(course) {
               if (currentTotal >= course.threshold) { if (!confirm(`Tu nota actual (${formatNum(currentTotal)}) ya es aprobatoria. ¿Activar de todas formas?`)) { e.target.checked = false; return; } } 
               else if (currentTotal < (course.maxScale || 20) * 0.4) { if (!confirm(`Recuerda que tu promedio (${formatNum(currentTotal)}) es bajo. ¿Continuar?`)) { e.target.checked = false; return; } }
               course.sustitutorio.enabled = true;
-          } else { course.sustitutorio.enabled = false; course.sustitutorio.nota = null; }
+          } else { 
+              course.sustitutorio.enabled = false; 
+              course.sustitutorio.nota = null; 
+              course.sustitutorio.forcedTargetId = null;
+          }
           updateResults(course); if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
       });
   }
@@ -1985,12 +1990,28 @@ function wireResultsEvents(course) {
   const sustiVal = document.getElementById('susti-val');
   if (sustiVal) { 
     sustiVal.addEventListener('input', (e) => { 
-      const raw = e.target.value.trim(); 
-      course.sustitutorio.nota = raw === '' ? null : parseFloat(raw); 
+      const raw = e.target.value.trim().replace(',', '.'); 
+      if (raw === '') {
+        course.sustitutorio.nota = null;
+      } else if (!isNaN(raw)) {
+        course.sustitutorio.nota = parseFloat(raw);
+      }
       updateResults(course); 
       if (appState.tab === 'saved' && appState.openCourse) debounceSave(course); 
     }); 
   }
+
+  // Eventos para los radio buttons de excepciones
+  const radioBtns = document.querySelectorAll('.susti-target-radio');
+  radioBtns.forEach(rb => {
+      rb.addEventListener('change', (e) => {
+          if (e.target.checked) {
+              course.sustitutorio.forcedTargetId = e.target.value || null;
+              updateResults(course);
+              if (appState.tab === 'saved' && appState.openCourse) debounceSave(course);
+          }
+      });
+  });
 }
 
 function escapeHtml(str){ return String(str??'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -2036,10 +2057,10 @@ async function init(){
 init();
 
 document.addEventListener('keydown', function(e) {
-    if (e.target.tagName === 'INPUT' && e.target.type === 'number' && !appState.viewOnlyMode && e.target.id !== 'course-maxscale') {
+    if (e.target.tagName === 'INPUT' && (e.target.type === 'number' || e.target.inputMode === 'decimal') && !appState.viewOnlyMode && e.target.id !== 'course-maxscale') {
         if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault(); 
-            const inputs = Array.from(document.querySelectorAll('input[type="number"]:not(:disabled)'));
+            const inputs = Array.from(document.querySelectorAll('input[type="number"]:not(:disabled), input[inputmode="decimal"]:not(:disabled)'));
             const index = inputs.indexOf(e.target);
             if (index > -1) {
                 if ((e.key === 'Enter' || e.key === 'ArrowDown') && index < inputs.length - 1) inputs[index + 1].focus();
