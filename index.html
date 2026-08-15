@@ -1182,6 +1182,7 @@ function renderCourseList(){
         <button class="io-btn" id="export-selected-btn" title="Exportar seleccionadas">📤 Exportar</button>
         <button class="io-btn" id="export-all-btn" title="Exportar todo">📤 Todo</button>
         <button class="io-btn" id="import-global-btn" title="Importar JSON">📥 Importar</button>
+        <button class="io-btn" id="btn-sync-unp" style="color:var(--a1); border-color:rgba(124,92,255,.4);" title="Sincronizar desde la extensión UNP">📥 Sync UNP</button>
         <input type="file" id="global-file-input" accept=".json" multiple style="display:none">
       </div>
     </div>
@@ -1457,6 +1458,54 @@ function renderCourseList(){
     loadList();
     alert("¡Importación completada con éxito!");
   };
+  
+  const btnSyncUnp = document.getElementById('btn-sync-unp');
+  if (btnSyncUnp) {
+    btnSyncUnp.onclick = async () => {
+      try {
+        // 1. Leer el portapapeles
+        const textoPortapapeles = await navigator.clipboard.readText();
+        const datosUNP = JSON.parse(textoPortapapeles);
+
+        if (!datosUNP || !datosUNP.cursos) {
+            alert("No se detectaron notas. Ve a tu intranet y presiona el botón azul primero.");
+            return;
+        }
+
+        btnSyncUnp.innerText = "⏳ Guardando...";
+
+        // 2. Usar tu estado global de usuario
+        const ownerId = appState.currentUser.uid;
+
+        // 3. Iterar y crear cursos usando TUS funciones nativas
+        for (const curso of datosUNP.cursos) {
+            
+            // Usamos tu función defaultCourse para que el curso nazca con toda la estructura correcta (id, isPublic, sustitutorio, etc.)
+            let nuevoCurso = defaultCourse(curso.nombre, ownerId, datosUNP.nombre);
+            
+            // Reemplazamos los trabajos vacíos por los que extrajo la extensión
+            nuevoCurso.trabajos = curso.trabajos;
+            
+            // Guardamos en Firestore usando tu propio Backend
+            await Backend.saveCourse(nuevoCurso);
+        }
+
+        btnSyncUnp.innerText = "✅ Sincronizado";
+        btnSyncUnp.style.backgroundColor = "rgba(52,229,176,.1)";
+        btnSyncUnp.style.color = "var(--success)";
+        
+        alert("¡Magia hecha! Tus cursos y notas se han importado.");
+        
+        // Recargar la lista visualmente usando tu función
+        loadList();
+
+      } catch (error) {
+          console.error("Error al sincronizar:", error);
+          alert("Asegúrate de haber copiado los datos desde la extensión de Chrome primero.");
+          btnSyncUnp.innerText = "📥 Sync UNP";
+      }
+    };
+  }
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
