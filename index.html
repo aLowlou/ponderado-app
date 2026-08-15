@@ -1468,19 +1468,12 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
   if (btnSyncUnp) {
     btnSyncUnp.onclick = async () => {
       try {
-        let textoPortapapeles = "";
-        try {
-            textoPortapapeles = await navigator.clipboard.readText();
-        } catch (err) {
-            console.warn("El navegador bloqueó el portapapeles, usando selector de archivos de respaldo...");
-        }
+        // Lee el portapapeles automáticamente
+        const textoPortapapeles = await navigator.clipboard.readText();
+        const datosUNP = JSON.parse(textoPortapapeles);
 
-        let datosUNP = null;
-        try {
-            datosUNP = JSON.parse(textoPortapapeles);
-        } catch(e) {
-            // Si el portapapeles falló o está vacío, abrimos un explorador para subir el respaldo
-            alert("⚠️ No se pudo leer el portapapeles automáticamente. Por favor, asegúrate de haber esperado a que termine el proceso naranja en la UNP, o sube el archivo JSON si la extensión te lo descargó.");
+        if (!datosUNP || !datosUNP.cursos) {
+            alert("No se detectaron notas en el portapapeles. Presiona el botón azul en la UNP primero.");
             return;
         }
 
