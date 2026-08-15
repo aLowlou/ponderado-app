@@ -1481,23 +1481,27 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
 
         // Leer la base de datos actual para comparar
         const snap = await firestoreDb.collection('cursos').where('ownerId', '==', ownerId).get();
-        let todosLosCursos = [];
+        let cursosActivos = [];
+        
         for (const doc of snap.docs) {
             let data = doc.data();
             data.id = doc.id;
-            todosLosCursos.push(data);
+            // 🛑 LA CLAVE: Ignorar los cursos que están en la Papelera
+            if (!data.isDeleted) {
+                cursosActivos.push(data);
+            }
         }
 
         let creados = 0;
         let actualizados = 0;
         let saltados = 0;
 
-        // 1. Separar cursos en "Nuevos" y "Existentes" antes de guardar
         let cursosNuevos = [];
         let cursosExistentes = [];
 
         for (const curso of datosUNP.cursos) {
-            let cursoMatch = todosLosCursos.find(c => 
+            // Buscar solo entre los cursos que están visibles
+            let cursoMatch = cursosActivos.find(c => 
                 c.name.trim().toLowerCase() === curso.nombre.trim().toLowerCase() && 
                 (c.folder || 'General').trim().toLowerCase() === datosUNP.nombre.trim().toLowerCase()
             );
@@ -1509,13 +1513,13 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
             }
         }
 
-        // 🛑 PREGUNTA GLOBAL "REEMPLAZAR TODO" (Una sola vez)
+        // PREGUNTA GLOBAL "REEMPLAZAR TODO" (Una sola vez)
         let reemplazarTodo = false;
         if (cursosExistentes.length > 0) {
             reemplazarTodo = confirm(`⚠️ Se encontraron ${cursosExistentes.length} cursos que ya existen en la carpeta "${datosUNP.nombre}".\n\n¿Deseas REEMPLAZAR TODAS sus notas actuales por las descargadas de la universidad?`);
         }
 
-        // 2. Procesar los repetidos en lote
+        // Procesar los repetidos en lote
         for (const item of cursosExistentes) {
             if (reemplazarTodo) {
                 let cursoCompleto = await Backend.getCourse(item.db.id);
@@ -1535,11 +1539,11 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                     actualizados++;
                 }
             } else {
-                saltados++; // Si el usuario canceló, se omiten todos
+                saltados++;
             }
         }
 
-        // 3. Crear los cursos nuevos que no existían
+        // Crear los cursos nuevos que no existían
         for (const curso of cursosNuevos) {
             let nuevoCurso = defaultCourse(curso.nombre, ownerId, datosUNP.nombre);
             nuevoCurso.trabajos = curso.trabajos.map(t => {
