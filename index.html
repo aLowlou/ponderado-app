@@ -1492,56 +1492,68 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
         let actualizados = 0;
         let saltados = 0;
 
-        for (const curso of datosUNP.cursos) {
-            const folderName = datosUNP.nombre; 
-            const courseName = curso.nombre;    
+        // 1. Separar cursos en "Nuevos" y "Existentes" antes de guardar
+        let cursosNuevos = [];
+        let cursosExistentes = [];
 
-            // Búsqueda inteligente: ignora mayúsculas, minúsculas y espacios extra
-            let cursoExistente = todosLosCursos.find(c => 
-                c.name.trim().toLowerCase() === courseName.trim().toLowerCase() && 
-                (c.folder || 'General').trim().toLowerCase() === folderName.trim().toLowerCase()
+        for (const curso of datosUNP.cursos) {
+            let cursoMatch = todosLosCursos.find(c => 
+                c.name.trim().toLowerCase() === curso.nombre.trim().toLowerCase() && 
+                (c.folder || 'General').trim().toLowerCase() === datosUNP.nombre.trim().toLowerCase()
             );
 
-            if (cursoExistente) {
-                // 🛑 VENTANA TIPO WINDOWS: Preguntar al usuario
-                const deseaReemplazar = confirm(`⚠️ El curso "${cursoExistente.name}" ya existe en la carpeta "${cursoExistente.folder}".\n\n¿Deseas REEMPLAZAR sus notas actuales por las descargadas de la universidad?`);
-                
-                if (deseaReemplazar) {
-                    let cursoCompleto = await Backend.getCourse(cursoExistente.id);
-                    if (cursoCompleto) {
-                        cursoCompleto.trabajos = curso.trabajos.map(t => {
-                            let trabPrevio = (cursoCompleto.trabajos || []).find(xt => xt.name.trim().toLowerCase() === t.nombre.trim().toLowerCase());
-                            return {
-                                id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
-                                name: String(t.nombre || 'Trabajo'),
-                                percentage: Number(t.porcentaje) || 0,
-                                dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
-                                notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
-                            };
-                        });
-                        migrateCourse(cursoCompleto);
-                        await Backend.saveCourse(cursoCompleto);
-                        actualizados++;
-                    }
-                } else {
-                    saltados++; // Si el usuario le da a "Cancelar"
+            if (cursoMatch) {
+                cursosExistentes.push({ unp: curso, db: cursoMatch });
+            } else {
+                cursosNuevos.push(curso);
+            }
+        }
+
+        // 🛑 PREGUNTA GLOBAL "REEMPLAZAR TODO" (Una sola vez)
+        let reemplazarTodo = false;
+        if (cursosExistentes.length > 0) {
+            reemplazarTodo = confirm(`⚠️ Se encontraron ${cursosExistentes.length} cursos que ya existen en la carpeta "${datosUNP.nombre}".\n\n¿Deseas REEMPLAZAR TODAS sus notas actuales por las descargadas de la universidad?`);
+        }
+
+        // 2. Procesar los repetidos en lote
+        for (const item of cursosExistentes) {
+            if (reemplazarTodo) {
+                let cursoCompleto = await Backend.getCourse(item.db.id);
+                if (cursoCompleto) {
+                    cursoCompleto.trabajos = item.unp.trabajos.map(t => {
+                        let trabPrevio = (cursoCompleto.trabajos || []).find(xt => xt.name.trim().toLowerCase() === t.nombre.trim().toLowerCase());
+                        return {
+                            id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
+                            name: String(t.nombre || 'Trabajo'),
+                            percentage: Number(t.porcentaje) || 0,
+                            dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false, // Respeta tu configuración
+                            notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
+                        };
+                    });
+                    migrateCourse(cursoCompleto);
+                    await Backend.saveCourse(cursoCompleto);
+                    actualizados++;
                 }
             } else {
-                // CREAR NUEVO (Si no existe, no pregunta)
-                let nuevoCurso = defaultCourse(courseName, ownerId, folderName);
-                nuevoCurso.trabajos = curso.trabajos.map(t => {
-                    return {
-                        id: String(t.id || Date.now()),
-                        name: String(t.nombre || 'Trabajo'),
-                        percentage: Number(t.porcentaje) || 0,
-                        dropLowest: false,
-                        notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
-                    };
-                });
-                migrateCourse(nuevoCurso);
-                await Backend.saveCourse(nuevoCurso);
-                creados++;
+                saltados++; // Si el usuario canceló, se omiten todos
             }
+        }
+
+        // 3. Crear los cursos nuevos que no existían
+        for (const curso of cursosNuevos) {
+            let nuevoCurso = defaultCourse(curso.nombre, ownerId, datosUNP.nombre);
+            nuevoCurso.trabajos = curso.trabajos.map(t => {
+                return {
+                    id: String(t.id || Date.now()),
+                    name: String(t.nombre || 'Trabajo'),
+                    percentage: Number(t.porcentaje) || 0,
+                    dropLowest: false,
+                    notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
+                };
+            });
+            migrateCourse(nuevoCurso);
+            await Backend.saveCourse(nuevoCurso);
+            creados++;
         }
 
         btnSyncUnp.innerText = "✅ Completado";
