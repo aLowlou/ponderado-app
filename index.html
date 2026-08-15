@@ -489,7 +489,7 @@ const appState = {
 };
 
 const Backend = {
-  async listCourses(){
+async listCourses(){
     if (!appState.currentUser || !firebaseAvailable) return [];
     const snap = await firestoreDb.collection('cursos')
           .where('ownerId', '==', appState.currentUser.uid)
@@ -501,6 +501,10 @@ const Backend = {
 
     for (const d of snap.docs) {
        const data = d.data();
+       
+       // El auto-reparador mágico
+       migrateCourse(data); 
+
        const item = { 
          id: d.id, 
          name: data.name || 'Sin nombre', 
@@ -527,6 +531,7 @@ const Backend = {
     appState.trashIndex = trashList;
     return activeList;
   },
+
   async getCourse(id){
     if (!firebaseAvailable) return null;
     const doc = await firestoreDb.collection('cursos').doc(id).get();
