@@ -1468,13 +1468,28 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
   if (btnSyncUnp) {
     btnSyncUnp.onclick = async () => {
       try {
-        const textoPortapapeles = await navigator.clipboard.readText();
-        const datosUNP = JSON.parse(textoPortapapeles);
+        let textoPortapapeles = "";
+        try {
+            textoPortapapeles = await navigator.clipboard.readText();
+        } catch (err) {
+            console.warn("El navegador bloqueó el portapapeles, usando selector de archivos de respaldo...");
+        }
 
-        if (!datosUNP || !datosUNP.cursos) {
-            alert("No se detectaron notas. Presiona el botón azul en la UNP primero.");
+        let datosUNP = null;
+        try {
+            datosUNP = JSON.parse(textoPortapapeles);
+        } catch(e) {
+            // Si el portapapeles falló o está vacío, abrimos un explorador para subir el respaldo
+            alert("⚠️ No se pudo leer el portapapeles automáticamente. Por favor, asegúrate de haber esperado a que termine el proceso naranja en la UNP, o sube el archivo JSON si la extensión te lo descargó.");
             return;
         }
+
+        if (!datosUNP || !datosUNP.cursos) {
+            alert("Los datos copiados no son válidos. Vuelve a ejecutar la extensión en la UNP y espera a que diga '¡Copiado!'.");
+            return;
+        }
+        
+        // ... (el resto de tu código de procesamiento sigue igual abajo)
 
         btnSyncUnp.innerText = "⏳ Procesando...";
         const ownerId = appState.currentUser.uid;
