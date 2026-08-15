@@ -1463,57 +1463,75 @@ function renderCourseList(){
   if (btnSyncUnp) {
     btnSyncUnp.onclick = async () => {
       try {
-        // 1. Leer el portapapeles
         const textoPortapapeles = await navigator.clipboard.readText();
         const datosUNP = JSON.parse(textoPortapapeles);
 
         if (!datosUNP || !datosUNP.cursos) {
-            alert("No se detectaron notas. Ve a tu intranet y presiona el botón azul primero.");
+            alert("No se detectaron notas. Presiona el botón azul en la UNP primero.");
             return;
         }
 
-        btnSyncUnp.innerText = "⏳ Guardando...";
+        btnSyncUnp.innerText = "⏳ Restaurando y Guardando...";
         const ownerId = appState.currentUser.uid;
 
-        // 2. Iterar sobre cada curso de la UNP
-        for (const curso of datosUNP.cursos) {
-            const folderName = datosUNP.nombre; // Ej: "Ciclo 7"
-            const courseName = curso.nombre;    // Ej: "INGENIERIA DE CONTROL I"
+        // --- 🛠️ FASE 1: AUTO-REPARADOR DE CURSOS OCULTOS ---
+        // Lee tu nube y repara cualquier curso que se haya guardado mal antes
+        const snap = await firestoreDb.collection('cursos').where('ownerId', '==', ownerId).get();
+        let todosLosCursos = [];
 
-            // A: Buscar si el curso YA EXISTE en esa misma carpeta en tu estado global
-            let cursoExistenteMeta = appState.coursesIndex.find(c => 
+        for (const doc of snap.docs) {
+            let data = doc.data();
+            data.id = doc.id;
+            let needsFix = false;
+            
+            // Si le falta alguna propiedad vital, la inyectamos
+            if (!data.trabajos || !Array.isArray(data.trabajos)) { data.trabajos = []; needsFix = true; }
+            if (!data.sustitutorio) { data.sustitutorio = { enabled: false, nota: null, forcedTargetId: null }; needsFix = true; }
+            
+            if (needsFix) await firestoreDb.collection('cursos').doc(doc.id).set(data);
+            todosLosCursos.push(data);
+        }
+
+        // --- 📥 FASE 2: IMPORTACIÓN INTELIGENTE BLINDADA ---
+        for (const curso of datosUNP.cursos) {
+            const folderName = datosUNP.nombre; 
+            const courseName = curso.nombre;    
+
+            // Buscar si ya existe revisando la lista reparada
+            let cursoExistente = todosLosCursos.find(c => 
                 c.name === courseName && (c.folder || 'General') === folderName
             );
 
-            if (cursoExistenteMeta) {
-                // B: ACTUALIZAR CURSO EXISTENTE (Evita duplicados)
-                let cursoCompleto = await Backend.getCourse(cursoExistenteMeta.id);
+            if (cursoExistente) {
+                // ACTUALIZAR (Respeta tus configuraciones previas)
+                let cursoCompleto = await Backend.getCourse(cursoExistente.id);
                 if (cursoCompleto) {
-                    // Actualizamos los trabajos pero conservamos configuraciones previas (como dropLowest)
                     cursoCompleto.trabajos = curso.trabajos.map(t => {
-                        let trabPrevio = cursoCompleto.trabajos.find(xt => xt.name === t.nombre);
+                        let trabPrevio = (cursoCompleto.trabajos || []).find(xt => xt.name === t.nombre);
                         return {
-                            id: trabPrevio ? trabPrevio.id : String(t.id), // Mantiene el ID si ya existía
-                            name: t.nombre,
-                            percentage: t.porcentaje,
-                            dropLowest: trabPrevio ? trabPrevio.dropLowest : false, // Respeta tu configuración
-                            notas: t.nota !== null ? [{ id: Math.random().toString(36).slice(2,10), value: t.nota }] : []
+                            id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
+                            name: String(t.nombre || 'Trabajo'),
+                            percentage: Number(t.porcentaje) || 0,
+                            dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
+                            notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
                         };
                     });
+                    migrateCourse(cursoCompleto); // Asegura que no falte nada
                     await Backend.saveCourse(cursoCompleto);
                 }
             } else {
-                // C: CREAR CURSO NUEVO (Si es la primera vez que se sincroniza)
+                // CREAR NUEVO
                 let nuevoCurso = defaultCourse(courseName, ownerId, folderName);
                 nuevoCurso.trabajos = curso.trabajos.map(t => {
                     return {
-                        id: String(t.id),
-                        name: t.nombre,
-                        percentage: t.porcentaje,
+                        id: String(t.id || Date.now()),
+                        name: String(t.nombre || 'Trabajo'),
+                        percentage: Number(t.porcentaje) || 0,
                         dropLowest: false,
-                        notas: t.nota !== null ? [{ id: Math.random().toString(36).slice(2,10), value: t.nota }] : []
+                        notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
                     };
                 });
+                migrateCourse(nuevoCurso); // Asegura que no falte nada
                 await Backend.saveCourse(nuevoCurso);
             }
         }
@@ -1523,7 +1541,9 @@ function renderCourseList(){
         btnSyncUnp.style.color = "var(--success)";
         
         alert("¡Magia hecha! Tus notas se han actualizado correctamente.");
-        loadList(); // Recarga la lista visual
+        
+        // Refrescamos la página de golpe para limpiar la caché de la app
+        window.location.reload(); 
 
       } catch (error) {
           console.error("Error al sincronizar:", error);
