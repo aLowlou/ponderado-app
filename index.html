@@ -1473,31 +1473,57 @@ function renderCourseList(){
         }
 
         btnSyncUnp.innerText = "⏳ Guardando...";
-
-        // 2. Usar tu estado global de usuario
         const ownerId = appState.currentUser.uid;
 
-        // 3. Iterar y crear cursos usando TUS funciones nativas
+        // 2. Iterar sobre cada curso de la UNP
         for (const curso of datosUNP.cursos) {
-            
-            // Usamos tu función defaultCourse para que el curso nazca con toda la estructura correcta (id, isPublic, sustitutorio, etc.)
-            let nuevoCurso = defaultCourse(curso.nombre, ownerId, datosUNP.nombre);
-            
-            // Reemplazamos los trabajos vacíos por los que extrajo la extensión
-            nuevoCurso.trabajos = curso.trabajos;
-            
-            // Guardamos en Firestore usando tu propio Backend
-            await Backend.saveCourse(nuevoCurso);
+            const folderName = datosUNP.nombre; // Ej: "Ciclo 7"
+            const courseName = curso.nombre;    // Ej: "INGENIERIA DE CONTROL I"
+
+            // A: Buscar si el curso YA EXISTE en esa misma carpeta en tu estado global
+            let cursoExistenteMeta = appState.coursesIndex.find(c => 
+                c.name === courseName && (c.folder || 'General') === folderName
+            );
+
+            if (cursoExistenteMeta) {
+                // B: ACTUALIZAR CURSO EXISTENTE (Evita duplicados)
+                let cursoCompleto = await Backend.getCourse(cursoExistenteMeta.id);
+                if (cursoCompleto) {
+                    // Actualizamos los trabajos pero conservamos configuraciones previas (como dropLowest)
+                    cursoCompleto.trabajos = curso.trabajos.map(t => {
+                        let trabPrevio = cursoCompleto.trabajos.find(xt => xt.name === t.nombre);
+                        return {
+                            id: trabPrevio ? trabPrevio.id : String(t.id), // Mantiene el ID si ya existía
+                            name: t.nombre,
+                            percentage: t.porcentaje,
+                            dropLowest: trabPrevio ? trabPrevio.dropLowest : false, // Respeta tu configuración
+                            notas: t.nota !== null ? [{ id: Math.random().toString(36).slice(2,10), value: t.nota }] : []
+                        };
+                    });
+                    await Backend.saveCourse(cursoCompleto);
+                }
+            } else {
+                // C: CREAR CURSO NUEVO (Si es la primera vez que se sincroniza)
+                let nuevoCurso = defaultCourse(courseName, ownerId, folderName);
+                nuevoCurso.trabajos = curso.trabajos.map(t => {
+                    return {
+                        id: String(t.id),
+                        name: t.nombre,
+                        percentage: t.porcentaje,
+                        dropLowest: false,
+                        notas: t.nota !== null ? [{ id: Math.random().toString(36).slice(2,10), value: t.nota }] : []
+                    };
+                });
+                await Backend.saveCourse(nuevoCurso);
+            }
         }
 
         btnSyncUnp.innerText = "✅ Sincronizado";
         btnSyncUnp.style.backgroundColor = "rgba(52,229,176,.1)";
         btnSyncUnp.style.color = "var(--success)";
         
-        alert("¡Magia hecha! Tus cursos y notas se han importado.");
-        
-        // Recargar la lista visualmente usando tu función
-        loadList();
+        alert("¡Magia hecha! Tus notas se han actualizado correctamente.");
+        loadList(); // Recarga la lista visual
 
       } catch (error) {
           console.error("Error al sincronizar:", error);
@@ -1506,6 +1532,7 @@ function renderCourseList(){
       }
     };
   }
+  
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
