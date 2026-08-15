@@ -1464,7 +1464,7 @@ function renderCourseList(){
     alert("¡Importación completada con éxito!");
   };
   
-  const btnSyncUnp = document.getElementById('btn-sync-unp');
+const btnSyncUnp = document.getElementById('btn-sync-unp');
   if (btnSyncUnp) {
     btnSyncUnp.onclick = async () => {
       try {
@@ -1476,56 +1476,58 @@ function renderCourseList(){
             return;
         }
 
-        btnSyncUnp.innerText = "⏳ Restaurando y Guardando...";
+        btnSyncUnp.innerText = "⏳ Procesando...";
         const ownerId = appState.currentUser.uid;
 
-        // --- 🛠️ FASE 1: AUTO-REPARADOR DE CURSOS OCULTOS ---
-        // Lee tu nube y repara cualquier curso que se haya guardado mal antes
+        // Leer la base de datos actual para comparar
         const snap = await firestoreDb.collection('cursos').where('ownerId', '==', ownerId).get();
         let todosLosCursos = [];
-
         for (const doc of snap.docs) {
             let data = doc.data();
             data.id = doc.id;
-            let needsFix = false;
-            
-            // Si le falta alguna propiedad vital, la inyectamos
-            if (!data.trabajos || !Array.isArray(data.trabajos)) { data.trabajos = []; needsFix = true; }
-            if (!data.sustitutorio) { data.sustitutorio = { enabled: false, nota: null, forcedTargetId: null }; needsFix = true; }
-            
-            if (needsFix) await firestoreDb.collection('cursos').doc(doc.id).set(data);
             todosLosCursos.push(data);
         }
 
-        // --- 📥 FASE 2: IMPORTACIÓN INTELIGENTE BLINDADA ---
+        let creados = 0;
+        let actualizados = 0;
+        let saltados = 0;
+
         for (const curso of datosUNP.cursos) {
             const folderName = datosUNP.nombre; 
             const courseName = curso.nombre;    
 
-            // Buscar si ya existe revisando la lista reparada
+            // Búsqueda inteligente: ignora mayúsculas, minúsculas y espacios extra
             let cursoExistente = todosLosCursos.find(c => 
-                c.name === courseName && (c.folder || 'General') === folderName
+                c.name.trim().toLowerCase() === courseName.trim().toLowerCase() && 
+                (c.folder || 'General').trim().toLowerCase() === folderName.trim().toLowerCase()
             );
 
             if (cursoExistente) {
-                // ACTUALIZAR (Respeta tus configuraciones previas)
-                let cursoCompleto = await Backend.getCourse(cursoExistente.id);
-                if (cursoCompleto) {
-                    cursoCompleto.trabajos = curso.trabajos.map(t => {
-                        let trabPrevio = (cursoCompleto.trabajos || []).find(xt => xt.name === t.nombre);
-                        return {
-                            id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
-                            name: String(t.nombre || 'Trabajo'),
-                            percentage: Number(t.porcentaje) || 0,
-                            dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
-                            notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
-                        };
-                    });
-                    migrateCourse(cursoCompleto); // Asegura que no falte nada
-                    await Backend.saveCourse(cursoCompleto);
+                // 🛑 VENTANA TIPO WINDOWS: Preguntar al usuario
+                const deseaReemplazar = confirm(`⚠️ El curso "${cursoExistente.name}" ya existe en la carpeta "${cursoExistente.folder}".\n\n¿Deseas REEMPLAZAR sus notas actuales por las descargadas de la universidad?`);
+                
+                if (deseaReemplazar) {
+                    let cursoCompleto = await Backend.getCourse(cursoExistente.id);
+                    if (cursoCompleto) {
+                        cursoCompleto.trabajos = curso.trabajos.map(t => {
+                            let trabPrevio = (cursoCompleto.trabajos || []).find(xt => xt.name.trim().toLowerCase() === t.nombre.trim().toLowerCase());
+                            return {
+                                id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
+                                name: String(t.nombre || 'Trabajo'),
+                                percentage: Number(t.porcentaje) || 0,
+                                dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
+                                notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
+                            };
+                        });
+                        migrateCourse(cursoCompleto);
+                        await Backend.saveCourse(cursoCompleto);
+                        actualizados++;
+                    }
+                } else {
+                    saltados++; // Si el usuario le da a "Cancelar"
                 }
             } else {
-                // CREAR NUEVO
+                // CREAR NUEVO (Si no existe, no pregunta)
                 let nuevoCurso = defaultCourse(courseName, ownerId, folderName);
                 nuevoCurso.trabajos = curso.trabajos.map(t => {
                     return {
@@ -1536,18 +1538,18 @@ function renderCourseList(){
                         notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
                     };
                 });
-                migrateCourse(nuevoCurso); // Asegura que no falte nada
+                migrateCourse(nuevoCurso);
                 await Backend.saveCourse(nuevoCurso);
+                creados++;
             }
         }
 
-        btnSyncUnp.innerText = "✅ Sincronizado";
+        btnSyncUnp.innerText = "✅ Completado";
         btnSyncUnp.style.backgroundColor = "rgba(52,229,176,.1)";
         btnSyncUnp.style.color = "var(--success)";
         
-        alert("¡Magia hecha! Tus notas se han actualizado correctamente.");
+        alert(`¡Sincronización terminada!\n\n✨ Nuevos creados: ${creados}\n🔄 Notas actualizadas: ${actualizados}\n⏭️ Omitidos: ${saltados}`);
         
-        // Refrescamos la página de golpe para limpiar la caché de la app
         window.location.reload(); 
 
       } catch (error) {
