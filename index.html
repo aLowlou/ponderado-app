@@ -1468,21 +1468,13 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
   if (btnSyncUnp) {
     btnSyncUnp.onclick = async () => {
       try {
-        // Lee el portapapeles automáticamente
         const textoPortapapeles = await navigator.clipboard.readText();
         const datosUNP = JSON.parse(textoPortapapeles);
 
         if (!datosUNP || !datosUNP.cursos) {
-            alert("No se detectaron notas en el portapapeles. Presiona el botón azul en la UNP primero.");
+            alert("No se detectaron notas. Presiona el botón azul en la UNP primero.");
             return;
         }
-
-        if (!datosUNP || !datosUNP.cursos) {
-            alert("Los datos copiados no son válidos. Vuelve a ejecutar la extensión en la UNP y espera a que diga '¡Copiado!'.");
-            return;
-        }
-        
-        // ... (el resto de tu código de procesamiento sigue igual abajo)
 
         btnSyncUnp.innerText = "⏳ Procesando...";
         const ownerId = appState.currentUser.uid;
@@ -1512,16 +1504,22 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
             reemplazarTodo = confirm(`⚠️ Se encontraron ${cursosExistentes.length} cursos que ya existen en la carpeta "${datosUNP.nombre}".\n\n¿Deseas REEMPLAZAR TODAS sus notas actuales por las descargadas de la universidad?`);
         }
 
-        // 🧠 INTELIGENCIA ARTIFICIAL DE NOTAS:
-        // Decide si crea múltiples casilleros o solo el promedio general
+        // 🧠 PROCESADOR INTELIGENTE DE SUB-NOTAS
         const procesarNotas = (t) => {
             let arreglo = [];
-            if (t.subNotas && t.subNotas.length > 0) {
-                // Hay notas detalladas: creamos varios casilleros
-                arreglo = t.subNotas.map(val => ({ id: Math.random().toString(36).slice(2,10), value: Number(val) }));
-            } else if (t.nota !== null && t.nota !== undefined) {
-                // No hay detalles: creamos un solo casillero con el promedio
-                arreglo = [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }];
+            // Si la extensión extrajo sub-notas individuales (ej. PC1, PC2...)
+            if (t.subNotas && Array.isArray(t.subNotas) && t.subNotas.length > 0) {
+                arreglo = t.subNotas.map(val => ({ 
+                    id: Math.random().toString(36).slice(2,10), 
+                    value: Number(val) 
+                }));
+            } 
+            // Si no hay sub-notas pero sí un promedio general
+            else if (t.nota !== null && t.nota !== undefined) {
+                arreglo = [{ 
+                    id: Math.random().toString(36).slice(2,10), 
+                    value: Number(t.nota) 
+                }];
             }
             return arreglo;
         };
@@ -1535,9 +1533,9 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                         return {
                             id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
                             name: String(t.nombre || 'Trabajo'),
-                            percentage: Number(t.porcentaje) || 0,
+                            percentage: Number(t.percentage || t.porcentaje) || 0, // 👈 Lee ambos idiomas para evitar errores
                             dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
-                            notas: procesarNotas(t) // 🪄 Asigna las notas divididas
+                            notas: procesarNotas(t) // 🪄 Inserta las sub-notas múltiples
                         };
                     });
                     migrateCourse(cursoCompleto);
@@ -1555,9 +1553,9 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                 return {
                     id: String(t.id || Date.now()),
                     name: String(t.nombre || 'Trabajo'),
-                    percentage: Number(t.porcentaje) || 0,
+                    percentage: Number(t.percentage || t.porcentaje) || 0, // 👈 Lee ambos idiomas
                     dropLowest: false,
-                    notas: procesarNotas(t) // 🪄 Asigna las notas divididas
+                    notas: procesarNotas(t) // 🪄 Inserta las sub-notas múltiples
                 };
             });
             migrateCourse(nuevoCurso);
