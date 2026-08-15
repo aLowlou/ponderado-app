@@ -1479,47 +1479,45 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
         btnSyncUnp.innerText = "⏳ Procesando...";
         const ownerId = appState.currentUser.uid;
 
-        // Leer la base de datos actual para comparar
         const snap = await firestoreDb.collection('cursos').where('ownerId', '==', ownerId).get();
         let cursosActivos = [];
-        
         for (const doc of snap.docs) {
             let data = doc.data();
             data.id = doc.id;
-            // 🛑 LA CLAVE: Ignorar los cursos que están en la Papelera
-            if (!data.isDeleted) {
-                cursosActivos.push(data);
-            }
+            if (!data.isDeleted) cursosActivos.push(data);
         }
 
-        let creados = 0;
-        let actualizados = 0;
-        let saltados = 0;
-
-        let cursosNuevos = [];
-        let cursosExistentes = [];
+        let creados = 0, actualizados = 0, saltados = 0;
+        let cursosNuevos = [], cursosExistentes = [];
 
         for (const curso of datosUNP.cursos) {
-            // Buscar solo entre los cursos que están visibles
             let cursoMatch = cursosActivos.find(c => 
                 c.name.trim().toLowerCase() === curso.nombre.trim().toLowerCase() && 
                 (c.folder || 'General').trim().toLowerCase() === datosUNP.nombre.trim().toLowerCase()
             );
-
-            if (cursoMatch) {
-                cursosExistentes.push({ unp: curso, db: cursoMatch });
-            } else {
-                cursosNuevos.push(curso);
-            }
+            if (cursoMatch) cursosExistentes.push({ unp: curso, db: cursoMatch });
+            else cursosNuevos.push(curso);
         }
 
-        // PREGUNTA GLOBAL "REEMPLAZAR TODO" (Una sola vez)
         let reemplazarTodo = false;
         if (cursosExistentes.length > 0) {
             reemplazarTodo = confirm(`⚠️ Se encontraron ${cursosExistentes.length} cursos que ya existen en la carpeta "${datosUNP.nombre}".\n\n¿Deseas REEMPLAZAR TODAS sus notas actuales por las descargadas de la universidad?`);
         }
 
-        // Procesar los repetidos en lote
+        // 🧠 INTELIGENCIA ARTIFICIAL DE NOTAS:
+        // Decide si crea múltiples casilleros o solo el promedio general
+        const procesarNotas = (t) => {
+            let arreglo = [];
+            if (t.subNotas && t.subNotas.length > 0) {
+                // Hay notas detalladas: creamos varios casilleros
+                arreglo = t.subNotas.map(val => ({ id: Math.random().toString(36).slice(2,10), value: Number(val) }));
+            } else if (t.nota !== null && t.nota !== undefined) {
+                // No hay detalles: creamos un solo casillero con el promedio
+                arreglo = [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }];
+            }
+            return arreglo;
+        };
+
         for (const item of cursosExistentes) {
             if (reemplazarTodo) {
                 let cursoCompleto = await Backend.getCourse(item.db.id);
@@ -1530,8 +1528,8 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                             id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
                             name: String(t.nombre || 'Trabajo'),
                             percentage: Number(t.porcentaje) || 0,
-                            dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false, // Respeta tu configuración
-                            notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
+                            dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
+                            notas: procesarNotas(t) // 🪄 Asigna las notas divididas
                         };
                     });
                     migrateCourse(cursoCompleto);
@@ -1543,7 +1541,6 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
             }
         }
 
-        // Crear los cursos nuevos que no existían
         for (const curso of cursosNuevos) {
             let nuevoCurso = defaultCourse(curso.nombre, ownerId, datosUNP.nombre);
             nuevoCurso.trabajos = curso.trabajos.map(t => {
@@ -1552,7 +1549,7 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                     name: String(t.nombre || 'Trabajo'),
                     percentage: Number(t.porcentaje) || 0,
                     dropLowest: false,
-                    notas: (t.nota !== null && t.nota !== undefined) ? [{ id: Math.random().toString(36).slice(2,10), value: Number(t.nota) }] : []
+                    notas: procesarNotas(t) // 🪄 Asigna las notas divididas
                 };
             });
             migrateCourse(nuevoCurso);
@@ -1565,7 +1562,6 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
         btnSyncUnp.style.color = "var(--success)";
         
         alert(`¡Sincronización terminada!\n\n✨ Nuevos creados: ${creados}\n🔄 Notas actualizadas: ${actualizados}\n⏭️ Omitidos: ${saltados}`);
-        
         window.location.reload(); 
 
       } catch (error) {
