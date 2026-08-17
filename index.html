@@ -62,6 +62,11 @@
       -webkit-user-select: none !important;
   }
   
+  /* REGLA MAESTRA: Si el body sabe que estás arrastrando una carpeta, TODAS las carpetas ocultan su contenido */
+  body.is-dragging-folders .folder-content {
+      display: none !important;
+  }
+  
   #app{max-width:540px;margin:0 auto;padding:20px 16px 40px; transition: max-width 0.4s ease, width 0.4s ease;}
   
   @media (min-width: 900px) {
@@ -151,7 +156,7 @@
   input[type=text], input[type=number], input[type=password], select{ width:100%;background:var(--card-inset);border:1px solid transparent;border-radius:var(--r-input); color:var(--text);font-family:var(--sans);font-size:14.5px;padding:11px 14px;transition:border-color .15s; }
   input:focus, select:focus{outline:none;border-color:rgba(124,92,255,.55);}
   
-  /* Nuevo diseño para el título del curso (Fondo negro) */
+  /* Diseño para el título del curso (Fondo negro) */
   input.title-input {
       font-family: var(--display);
       font-size: 19px;
@@ -308,9 +313,7 @@
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
   .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
   
-  /* Animación de comprimir carpeta al agarrarla */
   .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); overflow: hidden; }
-  .folder-container.is-collapsed .folder-content { display: none !important; }
   
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 
@@ -338,7 +341,7 @@
       background: var(--card) !important; 
       border: 1px solid var(--a1) !important; 
       border-radius: 20px !important; 
-      transform: scale(1.02); /* Efecto 3D de levantarse de la pantalla */
+      transform: scale(1.02); 
   }
 </style>
 </head>
@@ -469,7 +472,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isPublic: false,
     isDeleted: false,
     deletedAt: null,
-    isFolderPlaceholder: false,
+    isFolderPlaceholder: false, // 📁 Permite que las carpetas existan solas
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
@@ -568,7 +571,7 @@ async listCourses(){
          isDeleted: !!data.isDeleted,
          deletedAt: data.deletedAt || null,
          totalGrade: getAnalysis(data, 0, 0).total,
-         isFolderPlaceholder: !!data.isFolderPlaceholder
+         isFolderPlaceholder: !!data.isFolderPlaceholder // Leemos la etiqueta de la nube
        };
 
        if (item.isDeleted) {
@@ -828,14 +831,6 @@ async function registerEmail() {
     } catch(err) { alert(err.message); }
 }
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.activeTrashView = false; appState.tab = 'saved'; }
-
-function daysLeftInTrash(deletedAt) {
-  if (!deletedAt) return '30 días';
-  const elapsed = Date.now() - deletedAt;
-  const remainingMs = (30 * 24 * 60 * 60 * 1000) - elapsed;
-  const days = Math.max(1, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
-  return `${days} día${days === 1 ? '' : 's'}`;
-}
 
 /* --- Modales de App --- */
 function openExportModal() {
@@ -1861,20 +1856,13 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
               forceFallback: true,
               fallbackClass: 'sortable-drag',
               onChoose: function (evt) {
-                  document.body.classList.add('is-dragging');
-                  
-                  // 🔥 ¡NUEVO! Cierra TODAS las carpetas al agarrar una 🔥
-                  listEl.querySelectorAll('.draggable-folder').forEach(f => f.classList.add('is-collapsed'));
+                  document.body.classList.add('is-dragging', 'is-dragging-folders');
               },
               onUnchoose: function(evt) {
-                  document.body.classList.remove('is-dragging');
-                  
-                  // 🔥 Restaura las carpetas a la normalidad
-                  listEl.querySelectorAll('.draggable-folder').forEach(f => f.classList.remove('is-collapsed'));
+                  document.body.classList.remove('is-dragging', 'is-dragging-folders');
               },
               onEnd: function (evt) {
-                  document.body.classList.remove('is-dragging');
-                  listEl.querySelectorAll('.draggable-folder').forEach(f => f.classList.remove('is-collapsed'));
+                  document.body.classList.remove('is-dragging', 'is-dragging-folders');
                   
                   const folderEls = listEl.querySelectorAll('.draggable-folder');
                   folderEls.forEach((el, index) => {
