@@ -310,11 +310,10 @@
     color: var(--text);
   }
 
-  /* --- Drag and Drop Físico Premium --- */
+  /* --- Drag and Drop Físico Premium (SortableJS) --- */
   .drag-handle { cursor: grab; color: var(--text-dim); padding: 4px 8px; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
   .drag-handle:hover { color: var(--text); }
   .drag-handle:active { cursor: grabbing; }
-  .drag-handle svg { pointer-events: none; }
   .sortable-ghost { opacity: 0.3 !important; background: var(--card-inset) !important; border: 2px dashed var(--a1) !important; }
   .sortable-drag { 
       cursor: grabbing !important; 
@@ -324,7 +323,7 @@
       background: var(--card) !important; 
       border: 1px solid var(--a1) !important; 
       border-radius: 20px !important; 
-      transform: scale(1.02); /* Efecto de tarjeta levantada hacia ti */
+      transform: scale(1.02); /* Efecto 3D de levantarse de la pantalla */
   }
 </style>
 </head>
@@ -1104,7 +1103,6 @@ function renderFolderView(folderName) {
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
-      // Ignorar si se hace clic en botones o en el ícono de arrastrar
       if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle')) return;
       content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
       const course = await Backend.getCourse(el.getAttribute('data-open'));
@@ -1151,12 +1149,16 @@ function renderFolderView(folderName) {
               onEnd: function () {
                   // Guardado silencioso sin recargar la pantalla
                   const courseEls = listEl.querySelectorAll('.course-row');
-                  courseEls.forEach((el, index) => {
+                  courseEls.forEach(async (el, index) => {
                       const id = el.getAttribute('data-open');
                       let courseObj = appState.coursesIndex.find(c => c.id === id);
                       if (courseObj && courseObj.orderIndex !== index) {
-                          courseObj.orderIndex = index;
-                          Backend.saveCourse(courseObj);
+                          courseObj.orderIndex = index; // Actualiza interfaz visual local
+                          let fullC = await Backend.getCourse(id);
+                          if(fullC) {
+                              fullC.orderIndex = index;
+                              Backend.saveCourse(fullC); // Guarda el curso real completo al fondo
+                          }
                       }
                   });
               }
@@ -1224,7 +1226,7 @@ function renderCourseList(){
       courses.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
       html += `
-        <div class="folder-container" data-folder-name="${escapeAttr(folderName)}">
+        <div class="folder-container draggable-folder" data-folder-name="${escapeAttr(folderName)}">
           <div class="folder-header">
             <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
               <span class="folder-title">📁 <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
@@ -1564,15 +1566,19 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
               forceFallback: true, // Esto anula el feo fantasma nativo de HTML5
               fallbackClass: 'sortable-drag',
               onEnd: function () {
-                  // Guardado silencioso de la posición
-                  const folderEls = listEl.querySelectorAll('.folder-container');
+                  // Guardado silencioso de la posición de la carpeta
+                  const folderEls = listEl.querySelectorAll('.draggable-folder');
                   folderEls.forEach((el, index) => {
                       const fName = el.getAttribute('data-folder-name');
                       let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
-                      fCourses.forEach(fc => {
+                      fCourses.forEach(async fc => {
                           if (fc.folderOrderIndex !== index) {
-                              fc.folderOrderIndex = index;
-                              Backend.saveCourse(fc); // Se guarda en segundo plano
+                              fc.folderOrderIndex = index; // Actualiza el estado en memoria al vuelo
+                              let fullC = await Backend.getCourse(fc.id);
+                              if(fullC) {
+                                  fullC.folderOrderIndex = index;
+                                  Backend.saveCourse(fullC); // Se guarda real en segundo plano
+                              }
                           }
                       });
                   });
