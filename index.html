@@ -144,7 +144,26 @@
   label.f-label{display:block;font-family:var(--mono);font-size:10px;color:var(--text-faint);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
   input[type=text], input[type=number], input[type=password], select{ width:100%;background:var(--card-inset);border:1px solid transparent;border-radius:var(--r-input); color:var(--text);font-family:var(--sans);font-size:14.5px;padding:11px 14px;transition:border-color .15s; }
   input:focus, select:focus{outline:none;border-color:rgba(124,92,255,.55);}
-  input.title-input{font-family:var(--display);font-size:19px;font-weight:600;background:transparent;padding:6px 2px;}
+  
+  /* Nuevo diseño para el título del curso (Fondo negro) */
+  input.title-input {
+      font-family: var(--display);
+      font-size: 19px;
+      font-weight: 600;
+      background: #000000;
+      border: 1px solid var(--border-strong);
+      padding: 10px 14px;
+      border-radius: 12px;
+      color: var(--text);
+      transition: all 0.2s ease;
+      width: 100%;
+  }
+  input.title-input:focus {
+      border-color: var(--a1);
+      box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.15);
+      outline: none;
+  }
+
   select{cursor:pointer;}
 
   .ruler{display:flex;height:12px;border-radius:var(--r-pill);overflow:hidden;background:var(--card-inset);margin:12px 0 8px;gap:2px;}
@@ -609,7 +628,7 @@ function flashSaved(isError){
 }
 
 /* ============================================================
-   RENDER PRINCIPAL
+   RENDER PRINCIPAL Y MODALES
    ============================================================ */
 function render(){
   const app = document.getElementById('app');
@@ -807,7 +826,6 @@ function openExportModal() {
   modal.id = 'export-modal';
   
   let optionsHtml = appState.coursesIndex.map(c => {
-    // 📁 No exportar las carpetas vacías / fantasmas
     if(c.isFolderPlaceholder) return '';
     return `
       <label style="display:flex; align-items:center; gap:10px; margin-bottom:8px; cursor:pointer; font-size:14px;">
@@ -896,12 +914,11 @@ function openNewFolderModal() {
         }
     });
 
-    // 📁 Crea un curso "fantasma" que solo sirve para que la carpeta exista visualmente
     const dummyCourse = defaultCourse('__dummy__', appState.currentUser.uid, folderName);
     dummyCourse.isFolderPlaceholder = true;
     dummyCourse.folderOrderIndex = maxFolderIdx + 1;
+    dummyCourse.orderIndex = 0;
     
-    // Inyecta en el menú visual sin tener que abrir el editor
     appState.coursesIndex.push({
         id: dummyCourse.id,
         name: dummyCourse.name,
@@ -919,7 +936,6 @@ function openNewFolderModal() {
     renderCourseList();
     closeModal();
     
-    // Lo sube a Firebase en segundo plano
     await Backend.saveCourse(dummyCourse);
   };
 
@@ -940,7 +956,6 @@ function openNewCourseModal() {
   modal.className = 'modal-overlay';
   modal.id = 'new-course-modal';
   
-  // Obtener carpetas únicas y válidas (ignorando las borradas)
   let foldersSet = new Set();
   appState.coursesIndex.forEach(c => {
       if (c.folder) foldersSet.add(c.folder);
@@ -972,7 +987,6 @@ function openNewCourseModal() {
   const selectEl = document.getElementById('nc-folder-select');
   const inputEl = document.getElementById('nc-new-folder-input');
 
-  // Si no hay carpetas previas, forzamos a que cree una nueva directamente
   if (foldersArr.length === 0) {
       selectEl.value = '__NEW__';
       selectEl.style.display = 'none';
@@ -1002,9 +1016,13 @@ function openNewCourseModal() {
     }
 
     let maxFolderIdx = -1;
+    let maxOrderIdx = -1;
     appState.coursesIndex.forEach(c => {
         if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
             maxFolderIdx = c.folderOrderIndex;
+        }
+        if ((c.folder || 'General') === folderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
+            maxOrderIdx = c.orderIndex;
         }
     });
 
@@ -1013,6 +1031,7 @@ function openNewCourseModal() {
 
     const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
     course.folderOrderIndex = fOrderIndex;
+    course.orderIndex = maxOrderIdx + 1;
     
     await Backend.saveCourse(course);
     appState.openCourse = course;
@@ -1053,7 +1072,7 @@ function renderTrashView() {
     appState.trashIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      if (!c.isFolderPlaceholder) { // No mostramos los fantasmas
+      if (!c.isFolderPlaceholder) { 
           foldersMap[f].push(c);
       }
     });
@@ -1157,7 +1176,6 @@ function renderTrashView() {
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
   
-  // Excluimos la etiqueta fantasma (la carpeta vacía) en el interior de la vista de carpeta
   let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName && !c.isFolderPlaceholder);
 
   folderCourses.sort((a, b) => {
@@ -1290,7 +1308,20 @@ function renderFolderView(folderName) {
   };
 
   document.getElementById('add-to-folder-btn').onclick = async () => {
+    let maxOrderIdx = -1;
+    appState.coursesIndex.forEach(c => {
+        if ((c.folder || 'General') === folderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
+            maxOrderIdx = c.orderIndex;
+        }
+    });
+    
+    let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === folderName);
+    let fOrderIndex = existingFolderCourse ? (existingFolderCourse.folderOrderIndex || 0) : 0;
+
     const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+    course.folderOrderIndex = fOrderIndex;
+    course.orderIndex = maxOrderIdx + 1;
+    
     await Backend.saveCourse(course);
     appState.openCourse = course;
     render();
@@ -1388,7 +1419,6 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    // Clasificamos evitando que los fantasmas sean cursos normales, pero asegurando que la carpeta se abra
     appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
@@ -1404,7 +1434,6 @@ function renderCourseList(){
     } else if (appState.sortBy === 'name-desc') {
       folderNamesKeys.sort((a, b) => b.localeCompare(a));
     } else {
-      // Orden por el Index del curso fantasma o de los cursos dentro
       folderNamesKeys.sort((a, b) => {
         let fCoursesA = appState.coursesIndex.filter(c => (c.folder || 'General') === a);
         let fCoursesB = appState.coursesIndex.filter(c => (c.folder || 'General') === b);
@@ -1417,7 +1446,17 @@ function renderCourseList(){
     html += `<div id="main-folders-list">`;
     folderNamesKeys.forEach((folderName, fIdx) => {
       let courses = foldersMap[folderName];
-      courses.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      
+      // Aplicar el MISMO orden a las tarjetas para que se refleje lo que elegiste dentro de la carpeta
+      courses.sort((a, b) => {
+        if (appState.folderSortBy === 'name-asc') return a.name.localeCompare(b.name);
+        if (appState.folderSortBy === 'name-desc') return b.name.localeCompare(a.name);
+        if (appState.folderSortBy === 'grade-desc') return b.totalGrade - a.totalGrade;
+        if (appState.folderSortBy === 'grade-asc') return a.totalGrade - b.totalGrade;
+        if (appState.folderSortBy === 'created-desc') return b.createdAt - a.createdAt;
+        if (appState.folderSortBy === 'updated-desc') return b.updatedAt - a.updatedAt;
+        return (a.orderIndex || 0) - (b.orderIndex || 0);
+      });
 
       html += `
         <div class="folder-container draggable-folder" data-folder-name="${escapeAttr(folderName)}">
@@ -1493,10 +1532,14 @@ function renderCourseList(){
           e.stopPropagation();
           const folderName = btn.getAttribute('data-target-folder');
           
+          let maxOrderIdx = -1;
           let maxFolderIdx = -1;
           appState.coursesIndex.forEach(c => {
               if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
                   maxFolderIdx = c.folderOrderIndex;
+              }
+              if ((c.folder || 'General') === folderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
+                  maxOrderIdx = c.orderIndex;
               }
           });
           let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === folderName);
@@ -1504,6 +1547,7 @@ function renderCourseList(){
 
           const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
           course.folderOrderIndex = fOrderIndex;
+          course.orderIndex = maxOrderIdx + 1;
           
           await Backend.saveCourse(course);
           appState.openCourse = course;
@@ -1723,8 +1767,17 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
             }
         }
 
+        let baseMaxOrder = -1;
+        appState.coursesIndex.forEach(c => {
+            if ((c.folder || 'General') === datosUNP.nombre && typeof c.orderIndex === 'number' && c.orderIndex > baseMaxOrder) {
+                baseMaxOrder = c.orderIndex;
+            }
+        });
+
         for (const curso of cursosNuevos) {
+            baseMaxOrder++;
             let nuevoCurso = defaultCourse(curso.nombre, ownerId, datosUNP.nombre);
+            nuevoCurso.orderIndex = baseMaxOrder;
             nuevoCurso.trabajos = curso.trabajos.map(t => {
                 return {
                     id: String(t.id || Date.now()),
@@ -1875,8 +1928,8 @@ function renderEditorScreen(course, persist){
           <input type="text" class="title-input" id="course-name" value="${escapeAttr(course.name)}" placeholder="Ej. Control Automático I" ${appState.viewOnlyMode ? 'disabled' : ''}>
         </div>
         <div style="flex:1; min-width:120px;">
-          <label class="f-label">Carpeta / Ciclo</label>
-          <input type="text" id="course-folder" value="${escapeAttr(course.folder || 'General')}" placeholder="Ej. Ciclo 7" style="background:var(--card-inset); border:1px solid var(--border); padding:10px; border-radius:12px; color:white; font-size:14px;" ${appState.viewOnlyMode ? 'disabled' : ''}>
+          <label class="f-label" style="display:flex; justify-content:space-between;">Carpeta / Ciclo <span style="color:var(--text-faint);">🔒</span></label>
+          <input type="text" id="course-folder" value="${escapeAttr(course.folder || 'General')}" disabled readonly style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.03); padding:10px 14px; border-radius:12px; color:var(--text-dim); font-size:14px; cursor:not-allowed; opacity:1; width:100%;">
         </div>
         <div style="flex:1; min-width:100px;">
           <label class="f-label">Escala Máxima</label>
@@ -1921,7 +1974,6 @@ function renderEditorScreen(course, persist){
       else { render(); loadList(); }
     };
     document.getElementById('course-name').addEventListener('input', (e) => { course.name = e.target.value; debounceSave(course); });
-    document.getElementById('course-folder').addEventListener('input', (e) => { course.folder = e.target.value.trim() || 'General'; debounceSave(course); });
     
     document.getElementById('course-maxscale').addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
