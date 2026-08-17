@@ -22,7 +22,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-firestore-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-auth-compat.min.js"></script>
-<!-- SortableJS para Drag & Drop Físico y Premium -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 
 <style>
@@ -60,13 +59,6 @@
   body.is-dragging * {
       user-select: none !important;
       -webkit-user-select: none !important;
-  }
-  
-  /* 🔥 REGLA MAESTRA: Si estás arrastrando una carpeta, TODAS ocultan su contenido instantáneamente 🔥 */
-  body.is-dragging-folders .folder-content,
-  .sortable-drag .folder-content,
-  .sortable-ghost .folder-content {
-      display: none !important;
   }
   
   #app{max-width:540px;margin:0 auto;padding:20px 16px 40px; transition: max-width 0.4s ease, width 0.4s ease;}
@@ -309,13 +301,35 @@
   .meta-time { color: var(--text-faint); }
   .meta-sep { color: var(--border-strong); margin: 0 6px; font-weight: normal; opacity:0.5; }
 
-  /* --- Carpetas y Animación de Compresión --- */
-  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; transition: background 0.2s, box-shadow 0.2s; }
-  .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  /* --- Carpetas y Animación de Compresión Global --- */
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; transition: background 0.2s, box-shadow 0.2s, margin-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease; }
+  .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; transition: margin-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
   .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
   
-  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); overflow: hidden; }
+  .folder-content-wrapper { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); overflow: hidden; opacity: 1; transition: opacity 0.2s ease; }
+  
+  /* 🔥 COMPRESIÓN MÁGICA: Reduce el tamaño de TODO el tablero para que sea fácil soltar 🔥 */
+  body.is-dragging-folders .folder-content-wrapper,
+  .sortable-drag .folder-content-wrapper,
+  .sortable-ghost .folder-content-wrapper {
+      grid-template-rows: 0fr !important;
+  }
+  body.is-dragging-folders .folder-content,
+  .sortable-drag .folder-content,
+  .sortable-ghost .folder-content {
+      opacity: 0 !important;
+  }
+  body.is-dragging-folders .folder-header,
+  .sortable-drag .folder-header,
+  .sortable-ghost .folder-header {
+      margin-bottom: 0 !important;
+  }
+  body.is-dragging-folders .folder-container {
+      margin-bottom: 8px; /* Tighter packing */
+      border-color: var(--border-strong);
+  }
   
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 
@@ -474,7 +488,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isPublic: false,
     isDeleted: false,
     deletedAt: null,
-    isFolderPlaceholder: false, // 📁 Permite que las carpetas existan solas
+    isFolderPlaceholder: false,
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
@@ -573,7 +587,7 @@ async listCourses(){
          isDeleted: !!data.isDeleted,
          deletedAt: data.deletedAt || null,
          totalGrade: getAnalysis(data, 0, 0).total,
-         isFolderPlaceholder: !!data.isFolderPlaceholder // Leemos la etiqueta de la nube
+         isFolderPlaceholder: !!data.isFolderPlaceholder
        };
 
        if (item.isDeleted) {
@@ -651,7 +665,7 @@ function flashSaved(isError){
 }
 
 /* ============================================================
-   RENDER PRINCIPAL Y MODALES
+   RENDER PRINCIPAL
    ============================================================ */
 function render(){
   const app = document.getElementById('app');
@@ -980,7 +994,6 @@ function openNewCourseModal() {
   modal.className = 'modal-overlay';
   modal.id = 'new-course-modal';
   
-  // Obtener carpetas únicas y válidas (ignorando las borradas)
   let foldersSet = new Set();
   appState.coursesIndex.forEach(c => {
       if (c.folder) foldersSet.add(c.folder);
@@ -1012,7 +1025,6 @@ function openNewCourseModal() {
   const selectEl = document.getElementById('nc-folder-select');
   const inputEl = document.getElementById('nc-new-folder-input');
 
-  // Si no hay carpetas previas, forzamos a que cree una nueva directamente
   if (foldersArr.length === 0) {
       selectEl.value = '__NEW__';
       selectEl.style.display = 'none';
@@ -1113,7 +1125,7 @@ function renderTrashView() {
               <button class="io-btn delete-folder-perm-btn" data-del-folder-perm="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--danger); border-color:rgba(255,107,129,.3);" title="Eliminar para siempre">✕ Eliminar carpeta</button>
             </div>
           </div>
-          <div class="folder-content">
+          <div class="folder-content-wrapper"><div class="folder-content">
       `;
       
       if (courses.length === 0) {
@@ -1131,7 +1143,7 @@ function renderTrashView() {
               </div>`;
           });
       }
-      html += `</div></div>`;
+      html += `</div></div></div>`;
     }
   }
 
@@ -1487,7 +1499,6 @@ function renderCourseList(){
     folderNamesKeys.forEach((folderName, fIdx) => {
       let courses = foldersMap[folderName];
       
-      // Aplicar el MISMO orden a las tarjetas para que se refleje lo que elegiste dentro de la carpeta
       courses.sort((a, b) => {
         if (appState.folderSortBy === 'name-asc') return a.name.localeCompare(b.name);
         if (appState.folderSortBy === 'name-desc') return b.name.localeCompare(a.name);
@@ -1515,7 +1526,7 @@ function renderCourseList(){
               <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
             </div>
           </div>
-          <div class="folder-content">
+          <div class="folder-content-wrapper"><div class="folder-content">
       `;
       
       if (courses.length === 0) {
@@ -1538,7 +1549,7 @@ function renderCourseList(){
           });
       }
       
-      html += `</div></div>`;
+      html += `</div></div></div>`;
     });
     html += `</div>`;
   }
