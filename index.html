@@ -528,8 +528,7 @@ async listCourses(){
          createdAt: data.createdAt || 0,
          isDeleted: !!data.isDeleted,
          deletedAt: data.deletedAt || null,
-         totalGrade: getAnalysis(data, 0, 0).total,
-         ownerId: data.ownerId
+         totalGrade: getAnalysis(data, 0, 0).total
        };
 
        if (item.isDeleted) {
@@ -552,7 +551,6 @@ async listCourses(){
     if (!doc.exists) return null;
     return Object.assign({ id }, doc.data());
   },
-  
   async saveCourse(course){
     if (!firebaseAvailable || appState.viewOnlyMode) return;
     course.updatedAt = Date.now();
@@ -561,7 +559,6 @@ async listCourses(){
     delete data.id;
     await firestoreDb.collection('cursos').doc(course.id).set(data);
   },
-  
   async softDeleteCourse(id){
     if (!firebaseAvailable) return;
     const fullC = await Backend.getCourse(id);
@@ -1017,7 +1014,7 @@ function renderFolderView(folderName) {
     html += `<div id="folder-courses-list">`;
     folderCourses.forEach((c, idx) => {
       html += `
-        <div class="course-row" data-open="${c.id}" style="margin-bottom:10px;">
+        <div class="course-row draggable-item" data-open="${c.id}" style="margin-bottom:10px;">
           <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
           <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
           <div style="display:flex; gap:4px; align-items:center;">
@@ -1150,7 +1147,7 @@ function renderFolderView(folderName) {
               forceFallback: true,
               fallbackClass: 'sortable-drag',
               onEnd: function () {
-                  // Guardado silencioso de forma 100% segura usando .update()
+                  // Guardado silencioso de forma 100% segura
                   const courseEls = listEl.querySelectorAll('.course-row');
                   courseEls.forEach((el, index) => {
                       const id = el.getAttribute('data-open');
@@ -1282,10 +1279,34 @@ function renderCourseList(){
     let folderName = prompt("Nombre de la nueva carpeta (ej. Ciclo 8):");
     if (!folderName || !folderName.trim()) return;
     folderName = folderName.trim();
+    
+    // Calcular el orden para que la carpeta nueva aparezca al final
+    let maxFolderIdx = -1;
+    appState.coursesIndex.forEach(c => {
+        if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
+            maxFolderIdx = c.folderOrderIndex;
+        }
+    });
+
     const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+    course.folderOrderIndex = maxFolderIdx + 1;
     await Backend.saveCourse(course);
-    appState.openCourse = course;
-    render();
+    
+    // Inyectar visualmente sin recargar
+    appState.coursesIndex.push({
+        id: course.id,
+        name: course.name,
+        folder: course.folder,
+        orderIndex: course.orderIndex,
+        folderOrderIndex: course.folderOrderIndex,
+        updatedAt: course.updatedAt,
+        createdAt: course.createdAt,
+        isDeleted: false,
+        deletedAt: null,
+        totalGrade: 0
+    });
+    
+    renderCourseList();
   };
 
   content.querySelectorAll('.folder-edit-btn').forEach(btn => {
@@ -1333,6 +1354,7 @@ function renderCourseList(){
 
   content.querySelectorAll('[data-open-folder]').forEach(el => {
     el.onclick = (e) => {
+      // Prevenir que el clic en el botón arrastrable abra la carpeta accidentalmente
       if (e.target.closest('.drag-handle') || e.target.closest('button')) return;
       appState.activeFolderView = el.getAttribute('data-open-folder');
       render();
@@ -1561,7 +1583,7 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
               animation: 200,
               ghostClass: 'sortable-ghost',
               dragClass: 'sortable-drag',
-              forceFallback: true,
+              forceFallback: true, // Esto anula el feo fantasma nativo de HTML5
               fallbackClass: 'sortable-drag',
               onEnd: function () {
                   // Guardado silencioso de la posición de la carpeta (Super seguro con .update())
@@ -1571,7 +1593,7 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                       let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
                       fCourses.forEach(fc => {
                           if (fc.folderOrderIndex !== index) {
-                              fc.folderOrderIndex = index;
+                              fc.folderOrderIndex = index; // Actualiza el estado en memoria al vuelo
                               firestoreDb.collection('cursos').doc(fc.id).update({ folderOrderIndex: index }).catch(()=>{});
                           }
                       });
