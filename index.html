@@ -528,7 +528,8 @@ async listCourses(){
          createdAt: data.createdAt || 0,
          isDeleted: !!data.isDeleted,
          deletedAt: data.deletedAt || null,
-         totalGrade: getAnalysis(data, 0, 0).total
+         totalGrade: getAnalysis(data, 0, 0).total,
+         ownerId: data.ownerId
        };
 
        if (item.isDeleted) {
@@ -551,15 +552,16 @@ async listCourses(){
     if (!doc.exists) return null;
     return Object.assign({ id }, doc.data());
   },
+  
   async saveCourse(course){
     if (!firebaseAvailable || appState.viewOnlyMode) return;
     course.updatedAt = Date.now();
     if(!course.createdAt) course.createdAt = course.updatedAt;
     const data = Object.assign({}, course);
     delete data.id;
-    // 🛑 Corrección críica: 'await' es necesario para que todo fluya correctamente
     await firestoreDb.collection('cursos').doc(course.id).set(data);
   },
+  
   async softDeleteCourse(id){
     if (!firebaseAvailable) return;
     const fullC = await Backend.getCourse(id);
@@ -1145,22 +1147,17 @@ function renderFolderView(folderName) {
               animation: 200,
               ghostClass: 'sortable-ghost',
               dragClass: 'sortable-drag',
-              forceFallback: true, // Magia para anular el fantasma nativo de HTML5
+              forceFallback: true,
               fallbackClass: 'sortable-drag',
               onEnd: function () {
-                  // Guardado silencioso sin recargar la pantalla
+                  // Guardado silencioso de forma 100% segura usando .update()
                   const courseEls = listEl.querySelectorAll('.course-row');
-                  courseEls.forEach(async (el, index) => {
+                  courseEls.forEach((el, index) => {
                       const id = el.getAttribute('data-open');
                       let courseObj = appState.coursesIndex.find(c => c.id === id);
                       if (courseObj && courseObj.orderIndex !== index) {
                           courseObj.orderIndex = index;
-                          let fullC = await Backend.getCourse(id);
-                          if(fullC) {
-                              fullC.orderIndex = index;
-                              // SE HACE GUARDADO SIN AWAIT PARA QUE NO BLOQUEE (Backgrouund Save)
-                              firestoreDb.collection('cursos').doc(fullC.id).set(fullC).catch(()=>{});
-                          }
+                          firestoreDb.collection('cursos').doc(id).update({ orderIndex: index }).catch(()=>{});
                       }
                   });
               }
@@ -1336,7 +1333,6 @@ function renderCourseList(){
 
   content.querySelectorAll('[data-open-folder]').forEach(el => {
     el.onclick = (e) => {
-      // Prevenir que el clic en el botón arrastrable abra la carpeta accidentalmente
       if (e.target.closest('.drag-handle') || e.target.closest('button')) return;
       appState.activeFolderView = el.getAttribute('data-open-folder');
       render();
@@ -1565,22 +1561,18 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
               animation: 200,
               ghostClass: 'sortable-ghost',
               dragClass: 'sortable-drag',
-              forceFallback: true, // Esto anula el feo fantasma nativo de HTML5
+              forceFallback: true,
               fallbackClass: 'sortable-drag',
               onEnd: function () {
-                  // Guardado silencioso de la posición de la carpeta
+                  // Guardado silencioso de la posición de la carpeta (Super seguro con .update())
                   const folderEls = listEl.querySelectorAll('.draggable-folder');
                   folderEls.forEach((el, index) => {
                       const fName = el.getAttribute('data-folder-name');
                       let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
-                      fCourses.forEach(async fc => {
+                      fCourses.forEach(fc => {
                           if (fc.folderOrderIndex !== index) {
-                              fc.folderOrderIndex = index; // Actualiza el estado en memoria al vuelo
-                              let fullC = await Backend.getCourse(fc.id);
-                              if(fullC) {
-                                  fullC.folderOrderIndex = index;
-                                  firestoreDb.collection('cursos').doc(fullC.id).set(fullC).catch(()=>{}); // Guardado silencioso de verdad
-                              }
+                              fc.folderOrderIndex = index;
+                              firestoreDb.collection('cursos').doc(fc.id).update({ folderOrderIndex: index }).catch(()=>{});
                           }
                       });
                   });
