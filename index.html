@@ -22,6 +22,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-firestore-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-auth-compat.min.js"></script>
+<!-- SortableJS para Drag & Drop Físico y Premium -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 
 <style>
@@ -322,7 +323,7 @@
       background: var(--card) !important; 
       border: 1px solid var(--a1) !important; 
       border-radius: 20px !important; 
-      transform: scale(1.02); 
+      transform: scale(1.02); /* Efecto 3D de levantarse de la pantalla */
   }
 </style>
 </head>
@@ -806,6 +807,7 @@ function openExportModal() {
   modal.id = 'export-modal';
   
   let optionsHtml = appState.coursesIndex.map(c => {
+    // 📁 No exportar las carpetas vacías / fantasmas
     if(c.isFolderPlaceholder) return '';
     return `
       <label style="display:flex; align-items:center; gap:10px; margin-bottom:8px; cursor:pointer; font-size:14px;">
@@ -894,10 +896,12 @@ function openNewFolderModal() {
         }
     });
 
+    // 📁 Crea un curso "fantasma" que solo sirve para que la carpeta exista visualmente
     const dummyCourse = defaultCourse('__dummy__', appState.currentUser.uid, folderName);
     dummyCourse.isFolderPlaceholder = true;
     dummyCourse.folderOrderIndex = maxFolderIdx + 1;
     
+    // Inyecta en el menú visual sin tener que abrir el editor
     appState.coursesIndex.push({
         id: dummyCourse.id,
         name: dummyCourse.name,
@@ -915,6 +919,7 @@ function openNewFolderModal() {
     renderCourseList();
     closeModal();
     
+    // Lo sube a Firebase en segundo plano
     await Backend.saveCourse(dummyCourse);
   };
 
@@ -923,6 +928,103 @@ function openNewFolderModal() {
   
   inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') confirmFolder();
+      if (e.key === 'Escape') closeModal();
+  });
+}
+
+function openNewCourseModal() {
+  const existing = document.getElementById('new-course-modal');
+  if (existing) existing.remove();
+
+  let modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'new-course-modal';
+  
+  // Obtener carpetas únicas y válidas (ignorando las borradas)
+  let foldersSet = new Set();
+  appState.coursesIndex.forEach(c => {
+      if (c.folder) foldersSet.add(c.folder);
+  });
+  let foldersArr = Array.from(foldersSet).sort();
+
+  let optionsHtml = foldersArr.map(f => `<option value="${escapeAttr(f)}">📁 ${escapeHtml(f)}</option>`).join('');
+  
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width: 360px;">
+      <h3 style="margin-top:0; font-family:var(--display); font-size:20px;">Nuevo curso</h3>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0; margin-bottom:16px;">¿En qué carpeta deseas guardar este curso?</p>
+      
+      <select id="nc-folder-select" style="background:var(--card-inset); border:1px solid var(--border); padding:12px 14px; border-radius:12px; color:white; font-size:14px; width:100%; margin-bottom:12px; font-family:var(--sans);">
+        ${optionsHtml}
+        <option value="__NEW__" style="color:var(--success); font-weight:700;">+ Añadir nueva carpeta...</option>
+      </select>
+      
+      <input type="text" id="nc-new-folder-input" placeholder="Nombre de la nueva carpeta (ej. Ciclo 8)" style="display:none; background:var(--card-inset); border:1px solid var(--success); padding:12px 14px; border-radius:12px; color:white; font-size:14px; width:100%; margin-bottom:12px; font-family:var(--sans);">
+      
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 8px;">
+        <button class="pill small" id="nc-cancel-btn" style="background:var(--card-inset); color:var(--text)">Cancelar</button>
+        <button class="pill pill-primary small" id="nc-confirm-btn">Crear Curso</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const selectEl = document.getElementById('nc-folder-select');
+  const inputEl = document.getElementById('nc-new-folder-input');
+
+  // Si no hay carpetas previas, forzamos a que cree una nueva directamente
+  if (foldersArr.length === 0) {
+      selectEl.value = '__NEW__';
+      selectEl.style.display = 'none';
+      inputEl.style.display = 'block';
+      inputEl.focus();
+  }
+
+  selectEl.onchange = (e) => {
+      if (e.target.value === '__NEW__') {
+          inputEl.style.display = 'block';
+          inputEl.focus();
+      } else {
+          inputEl.style.display = 'none';
+      }
+  };
+
+  const closeModal = () => modal.remove();
+  
+  const confirmCourse = async () => {
+    let folderName = selectEl.value;
+    if (folderName === '__NEW__') {
+        folderName = inputEl.value.trim();
+        if (!folderName) {
+            inputEl.style.borderColor = 'var(--danger)';
+            return;
+        }
+    }
+
+    let maxFolderIdx = -1;
+    appState.coursesIndex.forEach(c => {
+        if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
+            maxFolderIdx = c.folderOrderIndex;
+        }
+    });
+
+    let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === folderName);
+    let fOrderIndex = existingFolderCourse ? (existingFolderCourse.folderOrderIndex || 0) : (maxFolderIdx + 1);
+
+    const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+    course.folderOrderIndex = fOrderIndex;
+    
+    await Backend.saveCourse(course);
+    appState.openCourse = course;
+    closeModal();
+    render();
+  };
+
+  document.getElementById('nc-cancel-btn').onclick = closeModal;
+  document.getElementById('nc-confirm-btn').onclick = confirmCourse;
+  
+  modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') confirmCourse();
       if (e.key === 'Escape') closeModal();
   });
 }
@@ -951,7 +1053,7 @@ function renderTrashView() {
     appState.trashIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      if (!c.isFolderPlaceholder) {
+      if (!c.isFolderPlaceholder) { // No mostramos los fantasmas
           foldersMap[f].push(c);
       }
     });
@@ -968,6 +1070,7 @@ function renderTrashView() {
           </div>
           <div class="folder-content">
       `;
+      
       if (courses.length === 0) {
           html += `<div style="padding: 4px 16px 12px; color: var(--text-faint); font-size: 13px; font-style: italic;">Carpeta vacía</div>`;
       } else {
@@ -1054,6 +1157,7 @@ function renderTrashView() {
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
   
+  // Excluimos la etiqueta fantasma (la carpeta vacía) en el interior de la vista de carpeta
   let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName && !c.isFolderPlaceholder);
 
   folderCourses.sort((a, b) => {
@@ -1284,6 +1388,7 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
+    // Clasificamos evitando que los fantasmas sean cursos normales, pero asegurando que la carpeta se abra
     appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
@@ -1299,6 +1404,7 @@ function renderCourseList(){
     } else if (appState.sortBy === 'name-desc') {
       folderNamesKeys.sort((a, b) => b.localeCompare(a));
     } else {
+      // Orden por el Index del curso fantasma o de los cursos dentro
       folderNamesKeys.sort((a, b) => {
         let fCoursesA = appState.coursesIndex.filter(c => (c.folder || 'General') === a);
         let fCoursesB = appState.coursesIndex.filter(c => (c.folder || 'General') === b);
@@ -1334,7 +1440,12 @@ function renderCourseList(){
       `;
       
       if (courses.length === 0) {
-          html += `<div style="padding: 4px 16px 12px; color: var(--text-faint); font-size: 13px; font-style: italic;">Carpeta vacía</div>`;
+          html += `
+            <div style="padding: 8px 16px 16px;">
+              <div style="color: var(--text-faint); font-size: 13px; font-style: italic; margin-bottom: 12px; text-align: center;">Carpeta vacía</div>
+              <button class="pill pill-dashed small inline-add-course-btn" data-target-folder="${escapeAttr(folderName)}" style="width: 100%; border-color: rgba(53,199,242,.4); color: var(--a2);">+ Añadir curso a ${escapeHtml(folderName)}</button>
+            </div>
+          `;
       } else {
           courses.forEach(c => {
             html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
@@ -1374,6 +1485,31 @@ function renderCourseList(){
   document.getElementById('export-selected-btn').onclick = () => openExportModal();
 
   document.getElementById('new-folder-btn').onclick = () => openNewFolderModal();
+
+  document.getElementById('new-course-btn').onclick = () => openNewCourseModal();
+
+  content.querySelectorAll('.inline-add-course-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+          e.stopPropagation();
+          const folderName = btn.getAttribute('data-target-folder');
+          
+          let maxFolderIdx = -1;
+          appState.coursesIndex.forEach(c => {
+              if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
+                  maxFolderIdx = c.folderOrderIndex;
+              }
+          });
+          let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === folderName);
+          let fOrderIndex = existingFolderCourse ? (existingFolderCourse.folderOrderIndex || 0) : (maxFolderIdx + 1);
+
+          const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+          course.folderOrderIndex = fOrderIndex;
+          
+          await Backend.saveCourse(course);
+          appState.openCourse = course;
+          render();
+      };
+  });
 
   content.querySelectorAll('.folder-edit-btn').forEach(btn => {
     btn.onclick = (e) => {
@@ -1634,11 +1770,6 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
       await Backend.softDeleteCourse(el.getAttribute('data-del')); loadList();
     });
   });
-
-  document.getElementById('new-course-btn').onclick = async () => {
-    const course = defaultCourse('Nuevo curso', appState.currentUser.uid);
-    await Backend.saveCourse(course); appState.openCourse = course; render();
-  };
 
   if (appState.sortBy === 'custom') {
       const listEl = document.getElementById('main-folders-list');
