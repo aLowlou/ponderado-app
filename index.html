@@ -62,6 +62,13 @@
       -webkit-user-select: none !important;
   }
   
+  /* REGLA MAESTRA: Si estás arrastrando una carpeta, TODAS ocultan su contenido instantáneamente */
+  body.is-dragging-folders .folder-content,
+  .sortable-drag .folder-content,
+  .sortable-ghost .folder-content {
+      display: none !important;
+  }
+  
   #app{max-width:540px;margin:0 auto;padding:20px 16px 40px; transition: max-width 0.4s ease, width 0.4s ease;}
   
   @media (min-width: 900px) {
@@ -201,7 +208,8 @@
   input.n-val{font-family:var(--mono);flex:1;background:var(--card);}
   input.n-val.is-pending{box-shadow:inset 0 0 0 1.5px var(--warn);color:var(--warn);}
   input.n-val.is-dropped{box-shadow:inset 0 0 0 1.5px var(--danger);color:var(--text-faint);text-decoration:line-through;}
-  .icon-btn{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;padding:6px;border-radius:10px;}
+  
+  .icon-btn{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;padding:6px;border-radius:10px; display:flex; align-items:center; justify-content:center;}
   .icon-btn:hover{color:var(--danger);background:rgba(255,107,129,.08);}
 
   .trabajo-foot{display:flex;justify-content:space-between;align-items:center;margin-top:2px;}
@@ -237,8 +245,6 @@
   /* --- Elementos de Compartir e Intercambio --- */
   .header-actions { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
   .action-buttons-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .share-btn, .io-btn { display: flex; align-items: center; gap: 6px; background: rgba(53, 199, 242, 0.1); border: 1px solid rgba(53, 199, 242, 0.3); color: var(--a2); padding: 8px 14px; border-radius: var(--r-pill); font-size: 12px; cursor: pointer; font-weight: 600;}
-  .share-btn:hover, .io-btn:hover { background: rgba(53, 199, 242, 0.2); }
   .read-only-banner { background: rgba(255, 180, 84, 0.1); border: 1px solid rgba(255, 180, 84, 0.3); color: var(--warn); padding: 12px; border-radius: 16px; text-align: center; font-size: 13px; margin-bottom: 24px; }
   
   /* Switch visual de visibilidad */
@@ -285,10 +291,38 @@
     color: var(--text-dim);
   }
 
-  .back-btn{background:var(--card);border:1px solid var(--border);color:var(--text-dim);border-radius:var(--r-pill); padding:9px 15px;font-size:12.5px;cursor:pointer;font-weight:600;}
+  .back-btn{background:var(--card);border:1px solid var(--border);color:var(--text-dim);border-radius:var(--r-pill); padding:9px 15px;font-size:12.5px;cursor:pointer;font-weight:600; display:flex; align-items:center; gap:6px;}
   .back-btn:hover{color:var(--text);border-color:var(--border-strong);}
   .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
   .save-flag.show{opacity:1;}
+
+  /* --- Nuevo Toolbar Premium (Sin Emojis) --- */
+  .toolbar-panel {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; background: transparent; padding: 0; border: none;
+  }
+  .toolbar-filters {
+      display: flex; align-items: center; gap: 8px; 
+      background: var(--card); border: 1px solid var(--border); padding: 4px 10px; border-radius: 12px;
+  }
+  .toolbar-filters span { font-size: 12px; color: var(--text-dim); font-weight: 600; white-space: nowrap; display:flex; align-items:center; gap:6px;}
+  .toolbar-filters select { background: transparent; border: none; padding: 4px; font-size: 13px; font-weight: 600; color: var(--text); outline: none; cursor:pointer;}
+  .toolbar-filters select option { background: var(--card); }
+
+  .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  
+  .toolbar-btn {
+      display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border);
+      color: var(--text-dim); padding: 8px 12px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  }
+  .toolbar-btn:hover { background: var(--card-inset); color: var(--text); border-color: var(--border-strong); }
+  .toolbar-btn svg { width: 14px; height: 14px; opacity: 0.8; }
+  
+  .toolbar-btn.trash { color: var(--warn); border-color: rgba(255, 180, 84, 0.2); background: rgba(255, 180, 84, 0.05); }
+  .toolbar-btn.trash:hover { border-color: rgba(255, 180, 84, 0.5); background: rgba(255, 180, 84, 0.1); color: #FFB454; }
+  
+  .toolbar-btn.sync { color: var(--a1); border-color: rgba(124,92,255,.2); background: rgba(124,92,255,.05); }
+  .toolbar-btn.sync:hover { border-color: rgba(124,92,255,.6); background: rgba(124,92,255,.15); color: #9D84FF; }
   
   /* --- Items de Cursos y Metadatos de Colores --- */
   .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;transition:border-color .15s;}
@@ -306,12 +340,12 @@
   .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; transition: background 0.2s, box-shadow 0.2s, margin-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease; }
   .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; transition: margin-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
-  .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
+  .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; }
   
   .folder-content-wrapper { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   .folder-content { min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); overflow: hidden; opacity: 1; transition: opacity 0.2s ease; }
   
-  /* 🔥 COMPRESIÓN MÁGICA: Reduce el tamaño de TODO el tablero para que sea fácil soltar 🔥 */
+  /* COMPRESIÓN MÁGICA: Reduce el tamaño de TODO el tablero para que sea fácil soltar */
   body.is-dragging-folders .folder-content-wrapper,
   .draggable-folder.sortable-drag .folder-content-wrapper,
   .draggable-folder.sortable-ghost .folder-content-wrapper {
@@ -328,16 +362,14 @@
       margin-bottom: 0 !important;
   }
   body.is-dragging-folders .folder-container {
-      margin-bottom: 8px; /* Hace que se junten más para ver mejor la lista */
+      margin-bottom: 8px;
       border-color: var(--border-strong);
   }
   
-  /* 🔴 EL SECRETO PARA EL BUG DEL CLON GIGANTE 🔴 */
+  /* EL SECRETO PARA EL BUG DEL CLON GIGANTE */
   .draggable-folder.sortable-drag {
       height: auto !important; 
   }
-  
-  .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 
   /* Modal nativo de la app */
   .modal-overlay { position: fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; padding: 16px; backdrop-filter: blur(4px); }
@@ -494,7 +526,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isPublic: false,
     isDeleted: false,
     deletedAt: null,
-    isFolderPlaceholder: false, // 📁 Permite que las carpetas existan solas
+    isFolderPlaceholder: false, // Permite que las carpetas existan solas
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
@@ -685,7 +717,7 @@ function render(){
         ${appState.currentUser && !appState.viewOnlyMode ? `
         <div class="user-badge" onclick="if(confirm('¿Seguro que deseas cerrar sesión?')) logout()" title="Cerrar sesión">
             <span class="email">${escapeHtml(appState.currentUser.displayName || appState.currentUser.email.split('@')[0])}</span>
-            <span style="font-size:14px">🚪</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
         </div>` : ''}
       </div>
     </div>`;
@@ -869,7 +901,7 @@ function openExportModal() {
   modal.id = 'export-modal';
   
   let optionsHtml = appState.coursesIndex.map(c => {
-    // 📁 No exportar las carpetas vacías / fantasmas
+    // No exportar las carpetas vacías / fantasmas
     if(c.isFolderPlaceholder) return '';
     return `
       <label style="display:flex; align-items:center; gap:10px; margin-bottom:8px; cursor:pointer; font-size:14px;">
@@ -1000,7 +1032,6 @@ function openNewCourseModal() {
   modal.className = 'modal-overlay';
   modal.id = 'new-course-modal';
   
-  // Obtener carpetas únicas y válidas (ignorando las borradas)
   let foldersSet = new Set();
   appState.coursesIndex.forEach(c => {
       if (c.folder) foldersSet.add(c.folder);
@@ -1032,7 +1063,6 @@ function openNewCourseModal() {
   const selectEl = document.getElementById('nc-folder-select');
   const inputEl = document.getElementById('nc-new-folder-input');
 
-  // Si no hay carpetas previas, forzamos a que cree una nueva directamente
   if (foldersArr.length === 0) {
       selectEl.value = '__NEW__';
       selectEl.style.display = 'none';
@@ -1101,12 +1131,12 @@ function renderTrashView() {
 
   let html = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <button class="back-btn" id="trash-back-btn">‹ Volver a Mis Cursos</button>
-      <button class="io-btn" id="empty-trash-btn" style="border-color:rgba(255,107,129,.3); color:var(--danger);" ${appState.trashIndex.length===0?'disabled':''}>🗑️ Vaciar Papelera</button>
+      <button class="back-btn" id="trash-back-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Volver a Mis Cursos</button>
+      <button class="toolbar-btn trash" id="empty-trash-btn" ${appState.trashIndex.length===0?'disabled':''}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Vaciar Papelera</button>
     </div>
     
     <div class="card" style="margin-bottom:16px;">
-      <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;">🗑️ Papelera / Eliminados</h2>
+      <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;">Papelera / Eliminados</h2>
       <p style="color:var(--text-dim); font-size:13px; margin:0;">Los elementos se eliminan automáticamente de forma permanente después de 30 días.</p>
     </div>
   `;
@@ -1118,7 +1148,7 @@ function renderTrashView() {
     appState.trashIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      if (!c.isFolderPlaceholder) { // No mostramos los fantasmas
+      if (!c.isFolderPlaceholder) { 
           foldersMap[f].push(c);
       }
     });
@@ -1127,10 +1157,10 @@ function renderTrashView() {
       html += `
         <div class="folder-container" style="border-color:rgba(255,255,255,.05); background:rgba(20,26,46,.5);">
           <div class="folder-header">
-            <span class="folder-title" style="color:var(--text-dim);">📁 ${escapeHtml(folderName)}</span>
+            <span class="folder-title" style="color:var(--text-dim);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ${escapeHtml(folderName)}</span>
             <div style="display:flex; gap:6px;">
-              <button class="io-btn restore-folder-btn" data-restore-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar toda la carpeta">↺ Restaurar carpeta</button>
-              <button class="io-btn delete-folder-perm-btn" data-del-folder-perm="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--danger); border-color:rgba(255,107,129,.3);" title="Eliminar para siempre">✕ Eliminar carpeta</button>
+              <button class="toolbar-btn restore-folder-btn" data-restore-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar toda la carpeta"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Restaurar carpeta</button>
+              <button class="toolbar-btn delete-folder-perm-btn" data-del-folder-perm="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px; color:var(--danger); border-color:rgba(255,107,129,.3);" title="Eliminar para siempre"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> Eliminar carpeta</button>
             </div>
           </div>
           <div class="folder-content-wrapper"><div class="folder-content">
@@ -1145,8 +1175,8 @@ function renderTrashView() {
                 <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
                 <div class="meta"><span class="meta-nf">Nota final: <b>${roundHalfUp(c.totalGrade)}</b></span><span class="meta-sep">|</span><span class="meta-ne">Nota exacta: ${formatNum(c.totalGrade)}</span><span class="meta-sep">|</span><span class="meta-time">Se eliminará en ${daysLeftInTrash(c.deletedAt)}</span></div></div>
                 <div style="display:flex; gap:6px; align-items:center;">
-                  <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura">↺ Restaurar</button>
-                  <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente">✕</button>
+                  <button class="toolbar-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Restaurar</button>
+                  <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
               </div>`;
           });
@@ -1222,7 +1252,6 @@ function renderTrashView() {
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
   
-  // Excluimos la etiqueta fantasma (la carpeta vacía) en el interior de la vista de carpeta
   let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName && !c.isFolderPlaceholder);
 
   folderCourses.sort((a, b) => {
@@ -1237,31 +1266,31 @@ function renderFolderView(folderName) {
 
   let html = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <button class="back-btn" id="folder-back-btn">‹ Volver a Mis Cursos</button>
+      <button class="toolbar-btn" id="folder-back-btn" style="border-radius:99px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Volver a Mis Cursos</button>
       <div style="display:flex; gap:8px;">
-        <button class="io-btn" id="delete-this-folder" style="border-color:rgba(255,107,129,.3); color:var(--danger);" title="Mover carpeta a papelera">🗑️ Eliminar carpeta</button>
-        <button class="io-btn" id="export-this-folder">📤 Exportar carpeta</button>
+        <button class="toolbar-btn trash" id="delete-this-folder" title="Mover carpeta a papelera"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Eliminar carpeta</button>
+        <button class="toolbar-btn" id="export-this-folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> Exportar carpeta</button>
       </div>
     </div>
     
     <div class="toolbar-panel">
-      <div style="display:flex; align-items:center; gap:8px; flex:1;">
-        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar asignaturas:</span>
-        <select id="folder-sort-select" style="padding:6px 10px; font-size:12px;">
-          <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
-          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Última modificación</option>
-          <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
-          <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
-          <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
-          <option value="grade-asc" ${appState.folderSortBy==='grade-asc'?'selected':''}>Menos nota a más nota</option>
+      <div class="toolbar-filters">
+        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="3" y2="18"></line></svg> Ordenar asignaturas:</span>
+        <select id="folder-sort-select">
+          <option value="custom" ${appState.folderSortBy==='custom'?'selected':''}>Manual (Arrastrar)</option>
+          <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Recientes</option>
+          <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>A - Z</option>
+          <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Z - A</option>
+          <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Mayor nota</option>
+          <option value="grade-asc" ${appState.folderSortBy==='grade-asc'?'selected':''}>Menor nota</option>
         </select>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;" id="folder-view-title-wrap">📁 <span id="folder-view-text">${escapeHtml(folderName)}</span></h2>
-        <button class="icon-btn" id="edit-folder-inside-btn" title="Editar nombre de carpeta">✏️</button>
+        <h2 style="font-family:var(--display); margin:0 0 4px; font-size:22px;" id="folder-view-title-wrap"><span style="display:flex; align-items:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> <span id="folder-view-text">${escapeHtml(folderName)}</span></span></h2>
+        <button class="icon-btn" id="edit-folder-inside-btn" title="Editar nombre de carpeta"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
       </div>
       <p style="color:var(--text-dim); font-size:13px; margin:0;">Administra y ordena las asignaturas de este ciclo.</p>
     </div>
@@ -1279,11 +1308,11 @@ function renderFolderView(folderName) {
           <div style="display:flex; gap:4px; align-items:center;">
             ${appState.folderSortBy === 'custom' ? `
               <div class="drag-handle" title="Arrastrar para mover">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
               </div>
             ` : ''}
-            <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
-            <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
+            <button class="toolbar-btn" data-export-course="${c.id}" style="padding:6px 10px;" title="Exportar curso"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>
+            <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
           </div>
         </div>`;
     });
@@ -1426,7 +1455,8 @@ function renderFolderView(folderName) {
               dragClass: 'sortable-drag',
               forceFallback: true,
               fallbackClass: 'sortable-drag',
-              onStart: function() { document.body.classList.add('is-dragging'); },
+              onChoose: function() { document.body.classList.add('is-dragging'); },
+              onUnchoose: function() { document.body.classList.remove('is-dragging'); },
               onEnd: function (evt) {
                   document.body.classList.remove('is-dragging');
                   const courseEls = listEl.querySelectorAll('.course-row');
@@ -1454,27 +1484,42 @@ function renderCourseList(){
 
   html += `
     <div class="toolbar-panel">
-      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:180px;">
-        <span style="font-size:12px; color:var(--text-dim); font-weight:600;">Ordenar carpetas:</span>
-        <select id="sort-select" style="padding:6px 10px; font-size:12px;">
-          <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Personalizado (Arrastrar)</option>
-          <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>Nombre (A - Z)</option>
-          <option value="name-desc" ${appState.sortBy==='name-desc'?'selected':''}>Nombre (Z - A)</option>
+      <div class="toolbar-filters">
+        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg> Ordenar:</span>
+        <select id="sort-select">
+          <option value="custom" ${appState.sortBy==='custom'?'selected':''}>Manual</option>
+          <option value="name-asc" ${appState.sortBy==='name-asc'?'selected':''}>A - Z</option>
+          <option value="name-desc" ${appState.sortBy==='name-desc'?'selected':''}>Z - A</option>
         </select>
       </div>
-      <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="io-btn" id="open-trash-btn" style="border-color:rgba(255,180,84,.3); color:var(--warn);" title="Asignaturas y carpetas eliminadas">🗑️ Papelera (${appState.trashIndex.length})</button>
-        <button class="io-btn" id="export-selected-btn" title="Exportar seleccionadas">📤 Exportar</button>
-        <button class="io-btn" id="export-all-btn" title="Exportar todo">📤 Todo</button>
-        <button class="io-btn" id="import-global-btn" title="Importar JSON">📥 Importar</button>
-        <button class="io-btn" id="btn-sync-unp" style="color:var(--a1); border-color:rgba(124,92,255,.4);" title="Sincronizar desde la extensión UNP">📥 Sync UNP</button>
+      <div class="toolbar-actions">
+        <button class="toolbar-btn trash" id="open-trash-btn" title="Papelera">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          Papelera (${appState.trashIndex.length})
+        </button>
+        <button class="toolbar-btn" id="export-selected-btn" title="Exportar seleccionadas">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Exportar
+        </button>
+        <button class="toolbar-btn" id="export-all-btn" title="Exportar todo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+          Todo
+        </button>
+        <button class="toolbar-btn" id="import-global-btn" title="Importar JSON">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Importar
+        </button>
+        <button class="toolbar-btn sync" id="btn-sync-unp" title="Sincronizar desde la extensión UNP">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+          Sync UNP
+        </button>
         <input type="file" id="global-file-input" accept=".json" multiple style="display:none">
       </div>
     </div>
   `;
 
   if (appState.coursesIndex.length === 0){
-    html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
+    html += `<div class="card empty"><p>Aún no tienes cursos guardados.</p></div>`;
   } else {
     // Clasificamos evitando que los fantasmas sean cursos normales, pero asegurando que la carpeta se abra
     appState.coursesIndex.forEach(c => {
@@ -1520,17 +1565,17 @@ function renderCourseList(){
         <div class="folder-container draggable-folder" data-folder-name="${escapeAttr(folderName)}">
           <div class="folder-header">
             <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
-              <span class="folder-title">📁 <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
+              <span class="folder-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px; vertical-align:text-bottom;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
             </div>
             <div style="display:flex; gap:4px; align-items:center;">
               ${appState.sortBy === 'custom' ? `
                 <div class="drag-handle" title="Arrastrar para mover carpeta">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
                 </div>
               ` : ''}
-              <button class="icon-btn folder-edit-btn" data-folder-target="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
-              <button class="icon-btn folder-delete-btn" data-del-folder="${escapeAttr(folderName)}" title="Mover carpeta a papelera" style="color:var(--danger);">🗑️</button>
-              <button class="io-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:4px 10px; font-size:11px;">📤 Exportar carpeta</button>
+              <button class="icon-btn folder-edit-btn" data-folder-target="${escapeAttr(folderName)}" title="Editar nombre de carpeta"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              <button class="icon-btn folder-delete-btn" data-del-folder="${escapeAttr(folderName)}" title="Mover carpeta a papelera" style="color:var(--danger);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+              <button class="toolbar-btn" data-export-folder="${escapeAttr(folderName)}" style="padding:6px 10px; font-size:11px;" title="Exportar carpeta"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> Exportar</button>
             </div>
           </div>
           <div class="folder-content-wrapper"><div class="folder-content">
@@ -1549,8 +1594,8 @@ function renderCourseList(){
                 <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
                 <div class="meta"><span class="meta-nf">Nota final: <b>${roundHalfUp(c.totalGrade)}</b></span><span class="meta-sep">|</span><span class="meta-ne">Nota exacta: ${formatNum(c.totalGrade)}</span><span class="meta-sep">|</span><span class="meta-time">${timeAgo(c.updatedAt)}</span></div></div>
                 <div style="display:flex; gap:6px; align-items:center;">
-                  <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
-                  <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
+                  <button class="toolbar-btn" data-export-course="${c.id}" style="padding:6px 10px;" title="Exportar curso"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></button>
+                  <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
               </div>`;
           });
@@ -1655,7 +1700,7 @@ function renderCourseList(){
 
   content.querySelectorAll('[data-open-folder]').forEach(el => {
     el.onclick = (e) => {
-      if (e.target.closest('.drag-handle') || e.target.closest('button')) return;
+      if (e.target.closest('.drag-handle') || e.target.closest('button') || e.target.closest('input')) return;
       appState.activeFolderView = el.getAttribute('data-open-folder');
       render();
     };
@@ -1862,23 +1907,6 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
     };
   }
   
-  content.querySelectorAll('[data-open]').forEach(el => {
-    el.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle')) return;
-      content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
-      const course = await Backend.getCourse(el.getAttribute('data-open'));
-      if (course){ migrateCourse(course); appState.openCourse = course; render(); }
-    });
-  });
-
-  content.querySelectorAll('[data-del]').forEach(el => {
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!confirm('¿Mover esta asignatura a la papelera?')) return;
-      await Backend.softDeleteCourse(el.getAttribute('data-del')); loadList();
-    });
-  });
-
   if (appState.sortBy === 'custom') {
       const listEl = document.getElementById('main-folders-list');
       if (listEl) {
@@ -1948,10 +1976,10 @@ function renderEditorScreen(course, persist){
   if (persist && !appState.viewOnlyMode){
     html += `
       <div class="header-actions">
-        <button class="back-btn" id="back-btn">‹ Volver</button>
+        <button class="back-btn" id="back-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Volver</button>
         <div class="action-buttons-group">
-           <button class="io-btn" id="export-btn" title="Exportar curso">📤 Exportar</button>
-           <button class="io-btn" id="import-btn" title="Importar datos">📥 Importar</button>
+           <button class="toolbar-btn" id="export-btn" title="Exportar curso"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> Exportar</button>
+           <button class="toolbar-btn" id="import-btn" title="Importar datos"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Importar</button>
            <input type="file" id="import-file-input" accept=".json" style="display:none">
            
            <div class="vis-switch ${course.isPublic ? 'public' : 'private'}" id="visibility-toggle-btn" title="Cambiar visibilidad (Público / Privado)">
@@ -1978,7 +2006,7 @@ function renderEditorScreen(course, persist){
         </div>
         <div style="display:flex; gap:8px;">
           <button class="pill pill-primary small" id="copy-share-url-btn">Copiar enlace</button>
-          <button class="icon-btn" id="close-share-box-btn" title="Cerrar">✕</button>
+          <button class="icon-btn" id="close-share-box-btn" title="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
         </div>
       </div>
 
@@ -1988,7 +2016,7 @@ function renderEditorScreen(course, persist){
           <input type="text" class="title-input" id="course-name" value="${escapeAttr(course.name)}" placeholder="Ej. Control Automático I" ${appState.viewOnlyMode ? 'disabled' : ''}>
         </div>
         <div style="flex:1; min-width:120px;">
-          <label class="f-label" style="display:flex; justify-content:space-between;">Carpeta / Ciclo <span style="color:var(--text-faint);">🔒</span></label>
+          <label class="f-label" style="display:flex; justify-content:space-between;">Carpeta / Ciclo <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></label>
           <input type="text" id="course-folder" value="${escapeAttr(course.folder || 'General')}" disabled readonly style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.03); padding:10px 14px; border-radius:12px; color:var(--text-dim); font-size:14px; cursor:not-allowed; opacity:1; width:100%;">
         </div>
         <div style="flex:1; min-width:100px;">
@@ -2001,8 +2029,8 @@ function renderEditorScreen(course, persist){
       <div class="quick-banner">
         <span class="qb-text"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="14.01"></line><line x1="12" y1="14" x2="12" y2="14.01"></line><line x1="8" y1="14" x2="8" y2="14.01"></line><line x1="16" y1="18" x2="16" y2="18.01"></line><line x1="12" y1="18" x2="12" y2="18.01"></line><line x1="8" y1="18" x2="8" y2="18.01"></line></svg>Modo borrador — No se guardarán los datos</span>
         <div style="display:flex; gap:8px;">
-           <button class="io-btn" id="export-quick-btn" style="padding:6px 12px; font-size:11px;">📤 Exportar</button>
-           <button class="back-btn" id="reset-quick-btn">↺ Reiniciar</button>
+           <button class="toolbar-btn" id="export-quick-btn" style="padding:6px 12px; font-size:11px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> Exportar</button>
+           <button class="back-btn" id="reset-quick-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Reiniciar</button>
         </div>
       </div>
       <div class="card card-tight" style="margin-bottom: 24px;">
@@ -2207,7 +2235,7 @@ function renderTrabajos(course, persist){
         <div class="trabajo-head">
           <input type="text" class="t-name" data-role="t-name" value="${escapeAttr(t.name)}" placeholder="Nombre del trabajo" ${dis}>
           <div class="pct-wrap"><input type="number" class="t-pct" data-role="t-pct" value="${t.percentage}" min="0" max="100" step="0.1" onkeydown="if(['e','E','-','+'].includes(event.key)) event.preventDefault();" ${dis}><span class="pct-sign">%</span></div>
-          ${!appState.viewOnlyMode ? `<button class="icon-btn" data-role="t-remove" title="Eliminar trabajo">✕</button>` : ''}
+          ${!appState.viewOnlyMode ? `<button class="icon-btn" data-role="t-remove" title="Eliminar trabajo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
         </div>
         <div class="toggle-row">
           <span class="lbl">Eliminar la <b>nota más baja</b></span>
@@ -2238,7 +2266,7 @@ function renderNotaRow(t, n, ni, dis, maxScale){
     <div class="nota-row" data-n="${n.id}">
       <span class="idx">${ni+1}.</span>
       <input type="number" class="n-val ${isPending?'is-pending':''} ${isDropped?'is-dropped':''}" data-role="n-val" value="${n.value===null?'':n.value}" placeholder="pendiente" step="0.01" min="0" max="${maxScale || 20}" onkeydown="if(['e','E','-','+'].includes(event.key)) event.preventDefault();" ${dis}>
-      ${!appState.viewOnlyMode ? `<button class="icon-btn" data-role="n-remove" title="Quitar nota">✕</button>` : ''}
+      ${!appState.viewOnlyMode ? `<button class="icon-btn" data-role="n-remove" title="Quitar nota"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
     </div>`;
 }
 
