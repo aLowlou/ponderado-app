@@ -151,6 +151,7 @@
   input[type=text], input[type=number], input[type=password], select{ width:100%;background:var(--card-inset);border:1px solid transparent;border-radius:var(--r-input); color:var(--text);font-family:var(--sans);font-size:14.5px;padding:11px 14px;transition:border-color .15s; }
   input:focus, select:focus{outline:none;border-color:rgba(124,92,255,.55);}
   
+  /* Nuevo diseño para el título del curso (Fondo negro) */
   input.title-input {
       font-family: var(--display);
       font-size: 19px;
@@ -337,7 +338,7 @@
       background: var(--card) !important; 
       border: 1px solid var(--a1) !important; 
       border-radius: 20px !important; 
-      transform: scale(1.02);
+      transform: scale(1.02); /* Efecto 3D de levantarse de la pantalla */
   }
 </style>
 </head>
@@ -468,7 +469,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isPublic: false,
     isDeleted: false,
     deletedAt: null,
-    isFolderPlaceholder: false, // 📁 Permite que las carpetas existan solas
+    isFolderPlaceholder: false,
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
@@ -645,7 +646,7 @@ function flashSaved(isError){
 }
 
 /* ============================================================
-   RENDER PRINCIPAL Y MODALES
+   RENDER PRINCIPAL
    ============================================================ */
 function render(){
   const app = document.getElementById('app');
@@ -932,13 +933,11 @@ function openNewFolderModal() {
         }
     });
 
-    // 📁 Crea un curso "fantasma" que solo sirve para que la carpeta exista visualmente
     const dummyCourse = defaultCourse('__dummy__', appState.currentUser.uid, folderName);
     dummyCourse.isFolderPlaceholder = true;
     dummyCourse.folderOrderIndex = maxFolderIdx + 1;
     dummyCourse.orderIndex = 0;
     
-    // Inyecta en el menú visual sin tener que abrir el editor
     appState.coursesIndex.push({
         id: dummyCourse.id,
         name: dummyCourse.name,
@@ -956,7 +955,6 @@ function openNewFolderModal() {
     renderCourseList();
     closeModal();
     
-    // Lo sube a Firebase en segundo plano
     await Backend.saveCourse(dummyCourse);
   };
 
@@ -977,7 +975,6 @@ function openNewCourseModal() {
   modal.className = 'modal-overlay';
   modal.id = 'new-course-modal';
   
-  // Obtener carpetas únicas y válidas (ignorando las borradas)
   let foldersSet = new Set();
   appState.coursesIndex.forEach(c => {
       if (c.folder) foldersSet.add(c.folder);
@@ -1009,7 +1006,6 @@ function openNewCourseModal() {
   const selectEl = document.getElementById('nc-folder-select');
   const inputEl = document.getElementById('nc-new-folder-input');
 
-  // Si no hay carpetas previas, forzamos a que cree una nueva directamente
   if (foldersArr.length === 0) {
       selectEl.value = '__NEW__';
       selectEl.style.display = 'none';
@@ -1095,7 +1091,7 @@ function renderTrashView() {
     appState.trashIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      if (!c.isFolderPlaceholder) { // No mostramos los fantasmas
+      if (!c.isFolderPlaceholder) { 
           foldersMap[f].push(c);
       }
     });
@@ -1199,7 +1195,6 @@ function renderTrashView() {
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
   
-  // Excluimos la etiqueta fantasma (la carpeta vacía) en el interior de la vista de carpeta
   let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName && !c.isFolderPlaceholder);
 
   folderCourses.sort((a, b) => {
@@ -1454,7 +1449,6 @@ function renderCourseList(){
   if (appState.coursesIndex.length === 0){
     html += `<div class="card empty"><div class="glyph">◇</div><p><b>Aún no tienes cursos guardados.</b></p></div>`;
   } else {
-    // Clasificamos evitando que los fantasmas sean cursos normales, pero asegurando que la carpeta se abra
     appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
@@ -1470,7 +1464,6 @@ function renderCourseList(){
     } else if (appState.sortBy === 'name-desc') {
       folderNamesKeys.sort((a, b) => b.localeCompare(a));
     } else {
-      // Orden por el Index del curso fantasma o de los cursos dentro
       folderNamesKeys.sort((a, b) => {
         let fCoursesA = appState.coursesIndex.filter(c => (c.folder || 'General') === a);
         let fCoursesB = appState.coursesIndex.filter(c => (c.folder || 'General') === b);
@@ -1484,7 +1477,6 @@ function renderCourseList(){
     folderNamesKeys.forEach((folderName, fIdx) => {
       let courses = foldersMap[folderName];
       
-      // Aplicar el MISMO orden a las tarjetas para que se refleje lo que elegiste dentro de la carpeta
       courses.sort((a, b) => {
         if (appState.folderSortBy === 'name-asc') return a.name.localeCompare(b.name);
         if (appState.folderSortBy === 'name-desc') return b.name.localeCompare(a.name);
@@ -1870,15 +1862,20 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
               fallbackClass: 'sortable-drag',
               onChoose: function (evt) {
                   document.body.classList.add('is-dragging');
-                  evt.item.classList.add('is-collapsed');
+                  
+                  // 🔥 ¡NUEVO! Cierra TODAS las carpetas al agarrar una 🔥
+                  listEl.querySelectorAll('.draggable-folder').forEach(f => f.classList.add('is-collapsed'));
               },
               onUnchoose: function(evt) {
                   document.body.classList.remove('is-dragging');
-                  evt.item.classList.remove('is-collapsed');
+                  
+                  // 🔥 Restaura las carpetas a la normalidad
+                  listEl.querySelectorAll('.draggable-folder').forEach(f => f.classList.remove('is-collapsed'));
               },
               onEnd: function (evt) {
                   document.body.classList.remove('is-dragging');
-                  evt.item.classList.remove('is-collapsed');
+                  listEl.querySelectorAll('.draggable-folder').forEach(f => f.classList.remove('is-collapsed'));
+                  
                   const folderEls = listEl.querySelectorAll('.draggable-folder');
                   folderEls.forEach((el, index) => {
                       const fName = el.getAttribute('data-folder-name');
