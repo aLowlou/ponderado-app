@@ -56,6 +56,12 @@
     -webkit-font-smoothing:antialiased; padding-bottom:56px;
   }
   
+  /* Bloquea la selección de texto AZUL cuando estás arrastrando una tarjeta */
+  body.is-dragging * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+  }
+  
   #app{max-width:540px;margin:0 auto;padding:20px 16px 40px; transition: max-width 0.4s ease, width 0.4s ease;}
   
   @media (min-width: 900px) {
@@ -283,17 +289,28 @@
   .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
   .save-flag.show{opacity:1;}
   
+  /* --- Items de Cursos y Metadatos de Colores --- */
   .course-row{display:flex;justify-content:space-between;align-items:center;background:var(--card); border:1px solid var(--border);border-radius:20px;padding:15px 16px;margin-bottom:10px;transition:border-color .15s;}
   .course-row:hover{border-color:rgba(124,92,255,.4);}
   .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
-  .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
+  .course-row .meta{font-family:var(--mono);font-size:11px;margin-top:5px; display:flex; align-items:center;}
+  
+  .meta-nf { color: var(--a1); }
+  .meta-nf b { color: var(--text); font-weight: 700; font-size: 11.5px;}
+  .meta-ne { color: var(--a2); }
+  .meta-time { color: var(--text-faint); }
+  .meta-sep { color: var(--border-strong); margin: 0 6px; font-weight: normal; opacity:0.5; }
 
-  /* --- Carpetas --- */
-  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; }
+  /* --- Carpetas y Animación de Compresión --- */
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; transition: background 0.2s, box-shadow 0.2s; }
   .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
   .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
-  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
+  
+  /* Animación de comprimir carpeta al agarrarla */
+  .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); overflow: hidden; }
+  .folder-container.is-collapsed .folder-content { display: none !important; }
+  
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 
   /* Modal nativo de la app */
@@ -301,37 +318,16 @@
   .modal-box { background:var(--card); border:1px solid var(--border); border-radius:var(--r-card); padding:24px; width:100%; max-width:400px; max-height:80vh; display:flex; flex-direction:column; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
   
   /* --- Estilos para el campo de contraseña con ojo --- */
-  .password-wrap {
-    position: relative;
-    width: 100%;
-    display: flex;
-    align-items: center;
-  }
-  .password-wrap input {
-    width: 100%;
-    padding-right: 40px !important; 
-  }
-  .toggle-eye-btn {
-    position: absolute;
-    right: 12px;
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    transition: color 0.2s ease;
-  }
-  .toggle-eye-btn:hover {
-    color: var(--text);
-  }
+  .password-wrap { position: relative; width: 100%; display: flex; align-items: center; }
+  .password-wrap input { width: 100%; padding-right: 40px !important; }
+  .toggle-eye-btn { position: absolute; right: 12px; background: none; border: none; color: var(--text-dim); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; transition: color 0.2s ease; }
+  .toggle-eye-btn:hover { color: var(--text); }
 
   /* --- Drag and Drop Físico Premium (SortableJS) --- */
   .drag-handle { cursor: grab; color: var(--text-dim); padding: 4px 8px; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
   .drag-handle:hover { color: var(--text); }
   .drag-handle:active { cursor: grabbing; }
+  .drag-handle svg { pointer-events: none; }
   .sortable-ghost { opacity: 0.3 !important; background: var(--card-inset) !important; border: 2px dashed var(--a1) !important; }
   .sortable-drag { 
       cursor: grabbing !important; 
@@ -341,7 +337,7 @@
       background: var(--card) !important; 
       border: 1px solid var(--a1) !important; 
       border-radius: 20px !important; 
-      transform: scale(1.02); /* Efecto 3D de levantarse de la pantalla */
+      transform: scale(1.02);
   }
 </style>
 </head>
@@ -357,10 +353,8 @@ function enforceValidNumber(inputEl, maxVal) {
     if (raw !== '') {
         let val = parseFloat(raw.replace(',', '.'));
         if (val > maxVal) {
-            // Si te pasas, simplemente ignoramos el último número escrito (ej: 2->23 -> vuelve a 2)
             inputEl.value = raw.slice(0, -1);
             raw = inputEl.value;
-            // Si copiaste y pegaste un numero inmenso, lo forzamos a la escala máxima
             if (parseFloat(raw.replace(',', '.')) > maxVal) {
                 inputEl.value = maxVal;
                 raw = String(maxVal);
@@ -651,7 +645,7 @@ function flashSaved(isError){
 }
 
 /* ============================================================
-   RENDER PRINCIPAL
+   RENDER PRINCIPAL Y MODALES
    ============================================================ */
 function render(){
   const app = document.getElementById('app');
@@ -938,11 +932,13 @@ function openNewFolderModal() {
         }
     });
 
+    // 📁 Crea un curso "fantasma" que solo sirve para que la carpeta exista visualmente
     const dummyCourse = defaultCourse('__dummy__', appState.currentUser.uid, folderName);
     dummyCourse.isFolderPlaceholder = true;
     dummyCourse.folderOrderIndex = maxFolderIdx + 1;
     dummyCourse.orderIndex = 0;
     
+    // Inyecta en el menú visual sin tener que abrir el editor
     appState.coursesIndex.push({
         id: dummyCourse.id,
         name: dummyCourse.name,
@@ -960,6 +956,7 @@ function openNewFolderModal() {
     renderCourseList();
     closeModal();
     
+    // Lo sube a Firebase en segundo plano
     await Backend.saveCourse(dummyCourse);
   };
 
@@ -1123,7 +1120,7 @@ function renderTrashView() {
             html += `
               <div class="course-row" style="margin-bottom:6px; cursor:default; opacity:0.85;">
                 <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-                <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | Se eliminará en ${daysLeftInTrash(c.deletedAt)}</div></div>
+                <div class="meta"><span class="meta-nf">Nota final: <b>${roundHalfUp(c.totalGrade)}</b></span><span class="meta-sep">|</span><span class="meta-ne">Nota exacta: ${formatNum(c.totalGrade)}</span><span class="meta-sep">|</span><span class="meta-time">Se eliminará en ${daysLeftInTrash(c.deletedAt)}</span></div></div>
                 <div style="display:flex; gap:6px; align-items:center;">
                   <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura">↺ Restaurar</button>
                   <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente">✕</button>
@@ -1255,7 +1252,7 @@ function renderFolderView(folderName) {
       html += `
         <div class="course-row draggable-item" data-open="${c.id}" style="margin-bottom:10px;">
           <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-          <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+          <div class="meta"><span class="meta-nf">Nota final: <b>${roundHalfUp(c.totalGrade)}</b></span><span class="meta-sep">|</span><span class="meta-ne">Nota exacta: ${formatNum(c.totalGrade)}</span><span class="meta-sep">|</span><span class="meta-time">${timeAgo(c.updatedAt)}</span></div></div>
           <div style="display:flex; gap:4px; align-items:center;">
             ${appState.folderSortBy === 'custom' ? `
               <div class="drag-handle" title="Arrastrar para mover">
@@ -1270,7 +1267,7 @@ function renderFolderView(folderName) {
     html += `</div>`;
   }
 
-  html += `<button class="pill pill-primary block" id="add-to-folder-btn" style="margin-top:16px;">+ Añadir asignatura a esta carpeta</button>`;
+  html += `<button class="pill pill-primary block inline-add-course-btn" data-target-folder="${escapeAttr(folderName)}" style="margin-top:16px;">+ Añadir asignatura a esta carpeta</button>`;
   content.innerHTML = html;
 
   document.getElementById('folder-back-btn').onclick = () => { appState.activeFolderView = null; render(); loadList(); };
@@ -1334,25 +1331,33 @@ function renderFolderView(folderName) {
     dl.remove();
   };
 
-  document.getElementById('add-to-folder-btn').onclick = async () => {
-    let maxOrderIdx = -1;
-    appState.coursesIndex.forEach(c => {
-        if ((c.folder || 'General') === folderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
-            maxOrderIdx = c.orderIndex;
-        }
-    });
-    
-    let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === folderName);
-    let fOrderIndex = existingFolderCourse ? (existingFolderCourse.folderOrderIndex || 0) : 0;
+  content.querySelectorAll('.inline-add-course-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+          e.stopPropagation();
+          const targetFolderName = btn.getAttribute('data-target-folder');
+          
+          let maxOrderIdx = -1;
+          let maxFolderIdx = -1;
+          appState.coursesIndex.forEach(c => {
+              if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
+                  maxFolderIdx = c.folderOrderIndex;
+              }
+              if ((c.folder || 'General') === targetFolderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
+                  maxOrderIdx = c.orderIndex;
+              }
+          });
+          let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === targetFolderName);
+          let fOrderIndex = existingFolderCourse ? (existingFolderCourse.folderOrderIndex || 0) : (maxFolderIdx + 1);
 
-    const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
-    course.folderOrderIndex = fOrderIndex;
-    course.orderIndex = maxOrderIdx + 1;
-    
-    await Backend.saveCourse(course);
-    appState.openCourse = course;
-    render();
-  };
+          const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, targetFolderName);
+          course.folderOrderIndex = fOrderIndex;
+          course.orderIndex = maxOrderIdx + 1;
+          
+          await Backend.saveCourse(course);
+          appState.openCourse = course;
+          render();
+      };
+  });
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
@@ -1398,7 +1403,10 @@ function renderFolderView(folderName) {
               dragClass: 'sortable-drag',
               forceFallback: true,
               fallbackClass: 'sortable-drag',
-              onEnd: function () {
+              onChoose: function() { document.body.classList.add('is-dragging'); },
+              onUnchoose: function() { document.body.classList.remove('is-dragging'); },
+              onEnd: function (evt) {
+                  document.body.classList.remove('is-dragging');
                   const courseEls = listEl.querySelectorAll('.course-row');
                   courseEls.forEach((el, index) => {
                       const id = el.getAttribute('data-open');
@@ -1516,9 +1524,9 @@ function renderCourseList(){
           `;
       } else {
           courses.forEach(c => {
-            html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
+            html += `<div class="course-row draggable-item" data-open="${c.id}" style="margin-bottom:6px;">
                 <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-                <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+                <div class="meta"><span class="meta-nf">Nota final: <b>${roundHalfUp(c.totalGrade)}</b></span><span class="meta-sep">|</span><span class="meta-ne">Nota exacta: ${formatNum(c.totalGrade)}</span><span class="meta-sep">|</span><span class="meta-time">${timeAgo(c.updatedAt)}</span></div></div>
                 <div style="display:flex; gap:6px; align-items:center;">
                   <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
                   <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
@@ -1556,7 +1564,7 @@ function renderCourseList(){
   content.querySelectorAll('.inline-add-course-btn').forEach(btn => {
       btn.onclick = async (e) => {
           e.stopPropagation();
-          const folderName = btn.getAttribute('data-target-folder');
+          const targetFolderName = btn.getAttribute('data-target-folder');
           
           let maxOrderIdx = -1;
           let maxFolderIdx = -1;
@@ -1564,14 +1572,14 @@ function renderCourseList(){
               if (typeof c.folderOrderIndex === 'number' && c.folderOrderIndex > maxFolderIdx) {
                   maxFolderIdx = c.folderOrderIndex;
               }
-              if ((c.folder || 'General') === folderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
+              if ((c.folder || 'General') === targetFolderName && typeof c.orderIndex === 'number' && c.orderIndex > maxOrderIdx) {
                   maxOrderIdx = c.orderIndex;
               }
           });
-          let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === folderName);
+          let existingFolderCourse = appState.coursesIndex.find(c => (c.folder || 'General') === targetFolderName);
           let fOrderIndex = existingFolderCourse ? (existingFolderCourse.folderOrderIndex || 0) : (maxFolderIdx + 1);
 
-          const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
+          const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, targetFolderName);
           course.folderOrderIndex = fOrderIndex;
           course.orderIndex = maxOrderIdx + 1;
           
@@ -1860,7 +1868,17 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
               dragClass: 'sortable-drag',
               forceFallback: true,
               fallbackClass: 'sortable-drag',
-              onEnd: function () {
+              onChoose: function (evt) {
+                  document.body.classList.add('is-dragging');
+                  evt.item.classList.add('is-collapsed');
+              },
+              onUnchoose: function(evt) {
+                  document.body.classList.remove('is-dragging');
+                  evt.item.classList.remove('is-collapsed');
+              },
+              onEnd: function (evt) {
+                  document.body.classList.remove('is-dragging');
+                  evt.item.classList.remove('is-collapsed');
                   const folderEls = listEl.querySelectorAll('.draggable-folder');
                   folderEls.forEach((el, index) => {
                       const fName = el.getAttribute('data-folder-name');
