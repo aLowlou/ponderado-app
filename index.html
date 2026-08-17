@@ -557,7 +557,8 @@ async listCourses(){
     if(!course.createdAt) course.createdAt = course.updatedAt;
     const data = Object.assign({}, course);
     delete data.id;
-    firestoreDb.collection('cursos').doc(course.id).set(data).catch(()=>{});
+    // 🛑 Corrección críica: 'await' es necesario para que todo fluya correctamente
+    await firestoreDb.collection('cursos').doc(course.id).set(data);
   },
   async softDeleteCourse(id){
     if (!firebaseAvailable) return;
@@ -1153,11 +1154,12 @@ function renderFolderView(folderName) {
                       const id = el.getAttribute('data-open');
                       let courseObj = appState.coursesIndex.find(c => c.id === id);
                       if (courseObj && courseObj.orderIndex !== index) {
-                          courseObj.orderIndex = index; // Actualiza interfaz visual local
+                          courseObj.orderIndex = index;
                           let fullC = await Backend.getCourse(id);
                           if(fullC) {
                               fullC.orderIndex = index;
-                              Backend.saveCourse(fullC); // Guarda el curso real completo al fondo
+                              // SE HACE GUARDADO SIN AWAIT PARA QUE NO BLOQUEE (Backgrouund Save)
+                              firestoreDb.collection('cursos').doc(fullC.id).set(fullC).catch(()=>{});
                           }
                       }
                   });
@@ -1577,7 +1579,7 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                               let fullC = await Backend.getCourse(fc.id);
                               if(fullC) {
                                   fullC.folderOrderIndex = index;
-                                  Backend.saveCourse(fullC); // Se guarda real en segundo plano
+                                  firestoreDb.collection('cursos').doc(fullC.id).set(fullC).catch(()=>{}); // Guardado silencioso de verdad
                               }
                           }
                       });
