@@ -8,7 +8,6 @@
                 (navigator.userAgent.includes("Mac") && "ontouchend" in document);
 
   if (isIOS && window.location.hostname.includes("vercel.app")) {
-    // Redirigimos conservando parámetros (como ?view=ID para que los enlaces compartidos también funcionen)
     window.location.replace("https://ponderado.web.app" + window.location.search + window.location.hash);
   }
   </script>
@@ -270,7 +269,7 @@
   .course-row .meta{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:4px;}
 
   /* --- Carpetas --- */
-  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; }
+  .folder-container { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 16px; transition: transform 0.2s; }
   .folder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .folder-title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
   .folder-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); }
@@ -308,6 +307,14 @@
   .toggle-eye-btn:hover {
     color: var(--text);
   }
+
+  /* --- Drag and Drop --- */
+  .drag-handle { cursor: grab; color: var(--text-dim); padding: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
+  .drag-handle:hover { color: var(--text); }
+  .drag-handle:active { cursor: grabbing; }
+  .dragging { opacity: 0.6; transform: scale(0.99); transition: transform 0.15s; z-index: 10; position: relative; box-shadow: 0 10px 20px rgba(0,0,0,0.3); border-color: var(--a1) !important; }
+  .drag-over-top { border-top: 2px dashed var(--a1) !important; border-top-left-radius: 0; border-top-right-radius: 0; }
+  .drag-over-bottom { border-bottom: 2px dashed var(--a1) !important; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 </style>
 </head>
 <body>
@@ -502,7 +509,6 @@ async listCourses(){
     for (const d of snap.docs) {
        const data = d.data();
        
-       // El auto-reparador mágico
        migrateCourse(data); 
 
        const item = { 
@@ -1004,13 +1010,14 @@ function renderFolderView(folderName) {
     html += `<div id="folder-courses-list">`;
     folderCourses.forEach((c, idx) => {
       html += `
-        <div class="course-row" data-open="${c.id}" style="margin-bottom:10px;">
+        <div class="course-row" data-open="${c.id}" ${appState.folderSortBy === 'custom' ? 'draggable="true"' : ''} style="margin-bottom:10px;">
           <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
           <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
           <div style="display:flex; gap:4px; align-items:center;">
             ${appState.folderSortBy === 'custom' ? `
-              <button class="icon-btn move-up-course" data-course-id="${c.id}" title="Subir" ${idx === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
-              <button class="icon-btn move-down-course" data-course-id="${c.id}" title="Bajar" ${idx === folderCourses.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
+              <div class="drag-handle" title="Arrastrar para mover">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+              </div>
             ` : ''}
             <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
             <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
@@ -1068,44 +1075,6 @@ function renderFolderView(folderName) {
     renderFolderView(folderName);
   };
 
-  content.querySelectorAll('.move-up-course').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const cid = btn.getAttribute('data-course-id');
-      let ids = folderCourses.map(c => c.id);
-      let idx = ids.indexOf(cid);
-      if (idx > 0) {
-        let temp = ids[idx]; ids[idx] = ids[idx - 1]; ids[idx - 1] = temp;
-        for (let i = 0; i < ids.length; i++) {
-          let cObj = await Backend.getCourse(ids[i]);
-          if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
-        }
-        appState.folderSortBy = 'custom';
-        await loadList();
-        renderFolderView(folderName);
-      }
-    };
-  });
-
-  content.querySelectorAll('.move-down-course').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const cid = btn.getAttribute('data-course-id');
-      let ids = folderCourses.map(c => c.id);
-      let idx = ids.indexOf(cid);
-      if (idx < ids.length - 1) {
-        let temp = ids[idx]; ids[idx] = ids[idx + 1]; ids[idx + 1] = temp;
-        for (let i = 0; i < ids.length; i++) {
-          let cObj = await Backend.getCourse(ids[i]);
-          if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
-        }
-        appState.folderSortBy = 'custom';
-        await loadList();
-        renderFolderView(folderName);
-      }
-    };
-  });
-
   document.getElementById('export-this-folder').onclick = async () => {
     let fullFolderData = [];
     for (const cMeta of folderCourses) {
@@ -1130,7 +1099,7 @@ function renderFolderView(folderName) {
 
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]')) return;
+      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle')) return;
       content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
       const course = await Backend.getCourse(el.getAttribute('data-open'));
       if (course){ migrateCourse(course); appState.openCourse = course; render(); }
@@ -1161,6 +1130,66 @@ function renderFolderView(folderName) {
       dl.remove();
     };
   });
+
+  // --- LÓGICA DE DRAG & DROP PARA ASIGNATURAS ---
+  if (appState.folderSortBy === 'custom') {
+      let dragSrcCourse = null;
+      content.querySelectorAll('.course-row').forEach(row => {
+          row.addEventListener('dragstart', function(e) {
+              if (!e.target.closest('.drag-handle')) { e.preventDefault(); return; }
+              dragSrcCourse = this;
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', this.getAttribute('data-open'));
+              this.classList.add('dragging');
+          });
+          row.addEventListener('dragover', function(e) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (this !== dragSrcCourse) {
+                  const rect = this.getBoundingClientRect();
+                  const midY = rect.top + rect.height / 2;
+                  this.classList.remove('drag-over-top', 'drag-over-bottom');
+                  if (e.clientY < midY) this.classList.add('drag-over-top');
+                  else this.classList.add('drag-over-bottom');
+              }
+              return false;
+          });
+          row.addEventListener('dragleave', function() {
+              this.classList.remove('drag-over-top', 'drag-over-bottom');
+          });
+          row.addEventListener('dragend', function() {
+              this.classList.remove('dragging');
+              content.querySelectorAll('.course-row').forEach(r => r.classList.remove('drag-over-top', 'drag-over-bottom'));
+          });
+          row.addEventListener('drop', async function(e) {
+              e.stopPropagation();
+              this.classList.remove('drag-over-top', 'drag-over-bottom');
+              if (dragSrcCourse && dragSrcCourse !== this) {
+                  const draggedId = dragSrcCourse.getAttribute('data-open');
+                  const targetId = this.getAttribute('data-open');
+                  let ids = folderCourses.map(c => c.id);
+                  const fromIdx = ids.indexOf(draggedId);
+                  ids.splice(fromIdx, 1);
+                  
+                  const rect = this.getBoundingClientRect();
+                  const midY = rect.top + rect.height / 2;
+                  let toIdx = ids.indexOf(targetId);
+                  if (e.clientY >= midY) toIdx++;
+                  
+                  ids.splice(toIdx, 0, draggedId);
+
+                  for (let i = 0; i < ids.length; i++) {
+                      let cObj = await Backend.getCourse(ids[i]);
+                      if (cObj) { cObj.orderIndex = i; await Backend.saveCourse(cObj); }
+                  }
+                  appState.folderSortBy = 'custom';
+                  await loadList();
+                  renderFolderView(folderName);
+              }
+              return false;
+          });
+      });
+  }
 }
 
 /* --- Lista Principal --- */
@@ -1222,15 +1251,16 @@ function renderCourseList(){
       courses.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
       html += `
-        <div class="folder-container" data-folder-name="${escapeAttr(folderName)}">
+        <div class="folder-container" data-folder-name="${escapeAttr(folderName)}" ${appState.sortBy === 'custom' ? 'draggable="true"' : ''}>
           <div class="folder-header">
             <div class="folder-title-wrap" data-open-folder="${escapeAttr(folderName)}">
               <span class="folder-title">📁 <span class="folder-label-text">${escapeHtml(folderName)}</span></span>
             </div>
             <div style="display:flex; gap:4px; align-items:center;">
               ${appState.sortBy === 'custom' ? `
-                <button class="icon-btn move-up-folder" data-folder-name="${escapeAttr(folderName)}" title="Subir carpeta" ${fIdx === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
-                <button class="icon-btn move-down-folder" data-folder-name="${escapeAttr(folderName)}" title="Bajar carpeta" ${fIdx === folderNamesKeys.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
+                <div class="drag-handle" title="Arrastrar para mover carpeta">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+                </div>
               ` : ''}
               <button class="icon-btn folder-edit-btn" data-folder-target="${escapeAttr(folderName)}" title="Editar nombre de carpeta">✏️</button>
               <button class="icon-btn folder-delete-btn" data-del-folder="${escapeAttr(folderName)}" title="Mover carpeta a papelera" style="color:var(--danger);">🗑️</button>
@@ -1284,56 +1314,6 @@ function renderCourseList(){
     render();
   };
 
-  content.querySelectorAll('.move-up-folder').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const fName = btn.getAttribute('data-folder-name');
-      let fKeys = [...folderNamesKeys];
-      let idx = fKeys.indexOf(fName);
-      if (idx > 0) {
-        let temp = fKeys[idx]; fKeys[idx] = fKeys[idx - 1]; fKeys[idx - 1] = temp;
-        for (let i = 0; i < fKeys.length; i++) {
-          let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
-          for (let fc of currentFolderCourses) {
-            let cObj = await Backend.getCourse(fc.id);
-            if (cObj) {
-              cObj.folderOrderIndex = i;
-              await Backend.saveCourse(cObj);
-            }
-          }
-        }
-        appState.sortBy = 'custom';
-        await loadList();
-        renderCourseList();
-      }
-    };
-  });
-
-  content.querySelectorAll('.move-down-folder').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const fName = btn.getAttribute('data-folder-name');
-      let fKeys = [...folderNamesKeys];
-      let idx = fKeys.indexOf(fName);
-      if (idx < fKeys.length - 1) {
-        let temp = fKeys[idx]; fKeys[idx] = fKeys[idx + 1]; fKeys[idx + 1] = temp;
-        for (let i = 0; i < fKeys.length; i++) {
-          let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
-          for (let fc of currentFolderCourses) {
-            let cObj = await Backend.getCourse(fc.id);
-            if (cObj) {
-              cObj.folderOrderIndex = i;
-              await Backend.saveCourse(cObj);
-            }
-          }
-        }
-        appState.sortBy = 'custom';
-        await loadList();
-        renderCourseList();
-      }
-    };
-  });
-
   content.querySelectorAll('.folder-edit-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -1378,7 +1358,8 @@ function renderCourseList(){
   });
 
   content.querySelectorAll('[data-open-folder]').forEach(el => {
-    el.onclick = () => {
+    el.onclick = (e) => {
+      if (e.target.closest('.drag-handle') || e.target.closest('button')) return;
       appState.activeFolderView = el.getAttribute('data-open-folder');
       render();
     };
@@ -1504,17 +1485,14 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
             reemplazarTodo = confirm(`⚠️ Se encontraron ${cursosExistentes.length} cursos que ya existen en la carpeta "${datosUNP.nombre}".\n\n¿Deseas REEMPLAZAR TODAS sus notas actuales por las descargadas de la universidad?`);
         }
 
-        // 🧠 PROCESADOR INTELIGENTE DE SUB-NOTAS
         const procesarNotas = (t) => {
             let arreglo = [];
-            // Si la extensión extrajo sub-notas individuales (ej. PC1, PC2...)
             if (t.subNotas && Array.isArray(t.subNotas) && t.subNotas.length > 0) {
                 arreglo = t.subNotas.map(val => ({ 
                     id: Math.random().toString(36).slice(2,10), 
                     value: Number(val) 
                 }));
             } 
-            // Si no hay sub-notas pero sí un promedio general
             else if (t.nota !== null && t.nota !== undefined) {
                 arreglo = [{ 
                     id: Math.random().toString(36).slice(2,10), 
@@ -1533,9 +1511,9 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                         return {
                             id: trabPrevio ? String(trabPrevio.id) : String(t.id || Date.now()),
                             name: String(t.nombre || 'Trabajo'),
-                            percentage: Number(t.percentage || t.porcentaje) || 0, // 👈 Lee ambos idiomas para evitar errores
+                            percentage: Number(t.percentage || t.porcentaje) || 0,
                             dropLowest: trabPrevio ? !!trabPrevio.dropLowest : false,
-                            notas: procesarNotas(t) // 🪄 Inserta las sub-notas múltiples
+                            notas: procesarNotas(t) 
                         };
                     });
                     migrateCourse(cursoCompleto);
@@ -1553,9 +1531,9 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                 return {
                     id: String(t.id || Date.now()),
                     name: String(t.nombre || 'Trabajo'),
-                    percentage: Number(t.percentage || t.porcentaje) || 0, // 👈 Lee ambos idiomas
+                    percentage: Number(t.percentage || t.porcentaje) || 0, 
                     dropLowest: false,
-                    notas: procesarNotas(t) // 🪄 Inserta las sub-notas múltiples
+                    notas: procesarNotas(t) 
                 };
             });
             migrateCourse(nuevoCurso);
@@ -1578,10 +1556,9 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
     };
   }
   
-
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]')) return;
+      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle')) return;
       content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
       const course = await Backend.getCourse(el.getAttribute('data-open'));
       if (course){ migrateCourse(course); appState.openCourse = course; render(); }
@@ -1600,6 +1577,69 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
     const course = defaultCourse('Nuevo curso', appState.currentUser.uid);
     await Backend.saveCourse(course); appState.openCourse = course; render();
   };
+
+  // --- LÓGICA DE DRAG & DROP PARA CARPETAS PRINCIPALES ---
+  if (appState.sortBy === 'custom') {
+      let dragSrcFolder = null;
+      content.querySelectorAll('.folder-container').forEach(folderEl => {
+          folderEl.addEventListener('dragstart', function(e) {
+              if (!e.target.closest('.drag-handle')) { e.preventDefault(); return; }
+              dragSrcFolder = this;
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', this.getAttribute('data-folder-name'));
+              this.classList.add('dragging');
+          });
+          folderEl.addEventListener('dragover', function(e) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (this !== dragSrcFolder) {
+                  const rect = this.getBoundingClientRect();
+                  const midY = rect.top + rect.height / 2;
+                  this.classList.remove('drag-over-top', 'drag-over-bottom');
+                  if (e.clientY < midY) this.classList.add('drag-over-top');
+                  else this.classList.add('drag-over-bottom');
+              }
+              return false;
+          });
+          folderEl.addEventListener('dragleave', function() {
+              this.classList.remove('drag-over-top', 'drag-over-bottom');
+          });
+          folderEl.addEventListener('dragend', function() {
+              this.classList.remove('dragging');
+              content.querySelectorAll('.folder-container').forEach(f => f.classList.remove('drag-over-top', 'drag-over-bottom'));
+          });
+          folderEl.addEventListener('drop', async function(e) {
+              e.stopPropagation();
+              this.classList.remove('drag-over-top', 'drag-over-bottom');
+              if (dragSrcFolder && dragSrcFolder !== this) {
+                  const draggedName = dragSrcFolder.getAttribute('data-folder-name');
+                  const targetName = this.getAttribute('data-folder-name');
+                  let fKeys = [...folderNamesKeys];
+                  const fromIdx = fKeys.indexOf(draggedName);
+                  fKeys.splice(fromIdx, 1);
+                  
+                  const rect = this.getBoundingClientRect();
+                  const midY = rect.top + rect.height / 2;
+                  let toIdx = fKeys.indexOf(targetName);
+                  if (e.clientY >= midY) toIdx++;
+                  
+                  fKeys.splice(toIdx, 0, draggedName);
+
+                  for (let i = 0; i < fKeys.length; i++) {
+                      let currentFolderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fKeys[i]);
+                      for (let fc of currentFolderCourses) {
+                          let cObj = await Backend.getCourse(fc.id);
+                          if (cObj) { cObj.folderOrderIndex = i; await Backend.saveCourse(cObj); }
+                      }
+                  }
+                  appState.sortBy = 'custom';
+                  await loadList();
+                  renderCourseList();
+              }
+              return false;
+          });
+      });
+  }
 }
 
 async function loadList(){
@@ -2152,7 +2192,6 @@ async function init(){
   const viewId = urlParams.get('view');
 
   if (firebaseAvailable) {
-      // Manejar respuesta de inicio de sesión por redirección al regresar de Safari/móvil
       try {
           await firebaseAuth.getRedirectResult();
       } catch(e) {
