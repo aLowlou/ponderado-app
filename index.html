@@ -22,7 +22,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-firestore-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-auth-compat.min.js"></script>
-<!-- SortableJS para Drag & Drop Físico y Premium -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 
 <style>
@@ -278,8 +277,8 @@
   .folder-content { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
   .toolbar-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: var(--card); padding: 12px 16px; border-radius: 18px; border: 1px solid var(--border); }
 
-  /* Modal selectivo y creación */
-  .modal-overlay { position: fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; padding: 16px; }
+  /* Modal nativo de la app */
+  .modal-overlay { position: fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; padding: 16px; backdrop-filter: blur(4px); }
   .modal-box { background:var(--card); border:1px solid var(--border); border-radius:var(--r-card); padding:24px; width:100%; max-width:400px; max-height:80vh; display:flex; flex-direction:column; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
   
   /* --- Estilos para el campo de contraseña con ojo --- */
@@ -323,7 +322,7 @@
       background: var(--card) !important; 
       border: 1px solid var(--a1) !important; 
       border-radius: 20px !important; 
-      transform: scale(1.02); /* Efecto 3D de levantarse de la pantalla */
+      transform: scale(1.02); 
   }
 </style>
 </head>
@@ -432,6 +431,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isPublic: false,
     isDeleted: false,
     deletedAt: null,
+    isFolderPlaceholder: false, // 📁 Permite que las carpetas existan solas
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
@@ -446,6 +446,7 @@ function migrateCourse(course){
   if (typeof course.orderIndex !== 'number') course.orderIndex = 0;
   if (typeof course.folderOrderIndex !== 'number') course.folderOrderIndex = 0;
   if (typeof course.isDeleted !== 'boolean') course.isDeleted = false;
+  if (typeof course.isFolderPlaceholder !== 'boolean') course.isFolderPlaceholder = false;
   if (!course.deletedAt) course.deletedAt = null;
   if (!course.createdAt) course.createdAt = course.updatedAt || Date.now();
   if (!Array.isArray(course.trabajos)) course.trabajos = [];
@@ -528,7 +529,8 @@ async listCourses(){
          createdAt: data.createdAt || 0,
          isDeleted: !!data.isDeleted,
          deletedAt: data.deletedAt || null,
-         totalGrade: getAnalysis(data, 0, 0).total
+         totalGrade: getAnalysis(data, 0, 0).total,
+         isFolderPlaceholder: !!data.isFolderPlaceholder
        };
 
        if (item.isDeleted) {
@@ -551,6 +553,7 @@ async listCourses(){
     if (!doc.exists) return null;
     return Object.assign({ id }, doc.data());
   },
+  
   async saveCourse(course){
     if (!firebaseAvailable || appState.viewOnlyMode) return;
     course.updatedAt = Date.now();
@@ -559,6 +562,7 @@ async listCourses(){
     delete data.id;
     await firestoreDb.collection('cursos').doc(course.id).set(data);
   },
+  
   async softDeleteCourse(id){
     if (!firebaseAvailable) return;
     const fullC = await Backend.getCourse(id);
@@ -787,18 +791,29 @@ async function registerEmail() {
 }
 function logout() { firebaseAuth.signOut(); appState.openCourse = null; appState.activeFolderView = null; appState.activeTrashView = false; appState.tab = 'saved'; }
 
+function daysLeftInTrash(deletedAt) {
+  if (!deletedAt) return '30 días';
+  const elapsed = Date.now() - deletedAt;
+  const remainingMs = (30 * 24 * 60 * 60 * 1000) - elapsed;
+  const days = Math.max(1, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
+  return `${days} día${days === 1 ? '' : 's'}`;
+}
+
 /* --- Modales de App --- */
 function openExportModal() {
   let modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'export-modal';
   
-  let optionsHtml = appState.coursesIndex.map(c => `
-    <label style="display:flex; align-items:center; gap:10px; margin-bottom:8px; cursor:pointer; font-size:14px;">
-      <input type="checkbox" class="export-chk" value="${c.id}" style="width:16px; height:16px; accent-color:var(--a1);">
-      ${escapeHtml(c.name)} <span style="font-size:11px; color:var(--text-dim)">(${c.folder})</span>
-    </label>
-  `).join('');
+  let optionsHtml = appState.coursesIndex.map(c => {
+    if(c.isFolderPlaceholder) return '';
+    return `
+      <label style="display:flex; align-items:center; gap:10px; margin-bottom:8px; cursor:pointer; font-size:14px;">
+        <input type="checkbox" class="export-chk" value="${c.id}" style="width:16px; height:16px; accent-color:var(--a1);">
+        ${escapeHtml(c.name)} <span style="font-size:11px; color:var(--text-dim)">(${c.folder})</span>
+      </label>
+    `;
+  }).join('');
 
   modal.innerHTML = `
     <div class="modal-box">
@@ -838,6 +853,9 @@ function openExportModal() {
 }
 
 function openNewFolderModal() {
+  const existing = document.getElementById('new-folder-modal');
+  if (existing) existing.remove();
+
   let modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'new-folder-modal';
@@ -876,28 +894,28 @@ function openNewFolderModal() {
         }
     });
 
-    const course = defaultCourse('Nueva asignatura', appState.currentUser.uid, folderName);
-    course.folderOrderIndex = maxFolderIdx + 1;
+    const dummyCourse = defaultCourse('__dummy__', appState.currentUser.uid, folderName);
+    dummyCourse.isFolderPlaceholder = true;
+    dummyCourse.folderOrderIndex = maxFolderIdx + 1;
     
-    // Inyectar a la lista sin abrir el editor de cursos
     appState.coursesIndex.push({
-        id: course.id,
-        name: course.name,
-        folder: course.folder,
-        orderIndex: course.orderIndex,
-        folderOrderIndex: course.folderOrderIndex,
-        updatedAt: course.updatedAt,
-        createdAt: course.createdAt,
+        id: dummyCourse.id,
+        name: dummyCourse.name,
+        folder: dummyCourse.folder,
+        orderIndex: dummyCourse.orderIndex,
+        folderOrderIndex: dummyCourse.folderOrderIndex,
+        updatedAt: dummyCourse.updatedAt,
+        createdAt: dummyCourse.createdAt,
         isDeleted: false,
         deletedAt: null,
-        totalGrade: 0
+        totalGrade: 0,
+        isFolderPlaceholder: true
     });
     
     renderCourseList();
     closeModal();
     
-    // Guardado silencioso en background
-    await Backend.saveCourse(course);
+    await Backend.saveCourse(dummyCourse);
   };
 
   document.getElementById('cancel-folder-btn').onclick = closeModal;
@@ -933,7 +951,9 @@ function renderTrashView() {
     appState.trashIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      foldersMap[f].push(c);
+      if (!c.isFolderPlaceholder) {
+          foldersMap[f].push(c);
+      }
     });
 
     for (const [folderName, courses] of Object.entries(foldersMap)) {
@@ -948,17 +968,21 @@ function renderTrashView() {
           </div>
           <div class="folder-content">
       `;
-      courses.forEach(c => {
-        html += `
-          <div class="course-row" style="margin-bottom:6px; cursor:default; opacity:0.85;">
-            <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-            <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | Se eliminará en ${daysLeftInTrash(c.deletedAt)}</div></div>
-            <div style="display:flex; gap:6px; align-items:center;">
-              <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura">↺ Restaurar</button>
-              <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente">✕</button>
-            </div>
-          </div>`;
-      });
+      if (courses.length === 0) {
+          html += `<div style="padding: 4px 16px 12px; color: var(--text-faint); font-size: 13px; font-style: italic;">Carpeta vacía</div>`;
+      } else {
+          courses.forEach(c => {
+            html += `
+              <div class="course-row" style="margin-bottom:6px; cursor:default; opacity:0.85;">
+                <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
+                <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | Se eliminará en ${daysLeftInTrash(c.deletedAt)}</div></div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura">↺ Restaurar</button>
+                  <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente">✕</button>
+                </div>
+              </div>`;
+          });
+      }
       html += `</div></div>`;
     }
   }
@@ -1029,7 +1053,8 @@ function renderTrashView() {
 
 function renderFolderView(folderName) {
   const content = document.getElementById('tab-content');
-  let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+  
+  let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName && !c.isFolderPlaceholder);
 
   folderCourses.sort((a, b) => {
     if (appState.folderSortBy === 'name-asc') return a.name.localeCompare(b.name);
@@ -1074,7 +1099,7 @@ function renderFolderView(folderName) {
   `;
 
   if (folderCourses.length === 0) {
-    html += `<div class="card empty"><p>Esta carpeta está vacía.</p></div>`;
+    html += `<div class="card empty" style="border: 1px dashed var(--border-strong); background: transparent;"><p>Esta carpeta está vacía.</p></div>`;
   } else {
     html += `<div id="folder-courses-list">`;
     folderCourses.forEach((c, idx) => {
@@ -1105,7 +1130,8 @@ function renderFolderView(folderName) {
   if (delFolderBtn) {
     delFolderBtn.onclick = async () => {
       if (!confirm(`¿Mover la carpeta "${folderName}" y todas sus asignaturas a la papelera?`)) return;
-      for (const cMeta of folderCourses) {
+      let folderCoursesAll = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+      for (const cMeta of folderCoursesAll) {
         await Backend.softDeleteCourse(cMeta.id);
       }
       appState.activeFolderView = null;
@@ -1261,7 +1287,9 @@ function renderCourseList(){
     appState.coursesIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      foldersMap[f].push(c);
+      if (!c.isFolderPlaceholder) {
+          foldersMap[f].push(c);
+      }
     });
 
     folderNamesKeys = Object.keys(foldersMap);
@@ -1272,8 +1300,10 @@ function renderCourseList(){
       folderNamesKeys.sort((a, b) => b.localeCompare(a));
     } else {
       folderNamesKeys.sort((a, b) => {
-        let minA = Math.min(...foldersMap[a].map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
-        let minB = Math.min(...foldersMap[b].map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
+        let fCoursesA = appState.coursesIndex.filter(c => (c.folder || 'General') === a);
+        let fCoursesB = appState.coursesIndex.filter(c => (c.folder || 'General') === b);
+        let minA = Math.min(...fCoursesA.map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
+        let minB = Math.min(...fCoursesB.map(c => typeof c.folderOrderIndex === 'number' ? c.folderOrderIndex : 0));
         return minA - minB;
       });
     }
@@ -1302,16 +1332,22 @@ function renderCourseList(){
           </div>
           <div class="folder-content">
       `;
-      courses.forEach(c => {
-        html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
-            <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
-            <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
-            <div style="display:flex; gap:6px; align-items:center;">
-              <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
-              <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
-            </div>
-          </div>`;
-      });
+      
+      if (courses.length === 0) {
+          html += `<div style="padding: 4px 16px 12px; color: var(--text-faint); font-size: 13px; font-style: italic;">Carpeta vacía</div>`;
+      } else {
+          courses.forEach(c => {
+            html += `<div class="course-row" data-open="${c.id}" style="margin-bottom:6px;">
+                <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
+                <div class="meta">Nota final: <b>${roundHalfUp(c.totalGrade)}</b> | Nota exacta: ${formatNum(c.totalGrade)} | ${timeAgo(c.updatedAt)}</div></div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <button class="io-btn" data-export-course="${c.id}" style="padding:4px 8px; font-size:11px;" title="Exportar curso">📤</button>
+                  <button class="icon-btn" data-del="${c.id}" title="Mover asignatura a papelera">✕</button>
+                </div>
+              </div>`;
+          });
+      }
+      
       html += `</div></div>`;
     });
     html += `</div>`;
@@ -1337,9 +1373,7 @@ function renderCourseList(){
 
   document.getElementById('export-selected-btn').onclick = () => openExportModal();
 
-  document.getElementById('new-folder-btn').onclick = () => {
-    openNewFolderModal();
-  };
+  document.getElementById('new-folder-btn').onclick = () => openNewFolderModal();
 
   content.querySelectorAll('.folder-edit-btn').forEach(btn => {
     btn.onclick = (e) => {
@@ -1359,8 +1393,8 @@ function renderCourseList(){
       const saveNewName = async () => {
         const newName = input.value.trim();
         if (!newName || newName === oldName) { renderCourseList(); return; }
-        let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === oldName);
-        for (const cMeta of folderCourses) {
+        let folderCoursesAll = appState.coursesIndex.filter(c => (c.folder || 'General') === oldName);
+        for (const cMeta of folderCoursesAll) {
           let fullC = await Backend.getCourse(cMeta.id);
           if (fullC) { fullC.folder = newName; await Backend.saveCourse(fullC); }
         }
@@ -1376,8 +1410,8 @@ function renderCourseList(){
       e.stopPropagation();
       const folderName = btn.getAttribute('data-del-folder');
       if (!confirm(`¿Mover la carpeta "${folderName}" y todas sus asignaturas a la papelera?`)) return;
-      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
-      for (const cMeta of folderCourses) {
+      let folderCoursesAll = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+      for (const cMeta of folderCoursesAll) {
         await Backend.softDeleteCourse(cMeta.id);
       }
       loadList();
@@ -1395,6 +1429,7 @@ function renderCourseList(){
   document.getElementById('export-all-btn').onclick = async () => {
     let fullData = [];
     for (const cMeta of appState.coursesIndex) {
+      if(cMeta.isFolderPlaceholder) continue;
       const fullC = await Backend.getCourse(cMeta.id);
       if (fullC) fullData.push(fullC);
     }
@@ -1411,7 +1446,7 @@ function renderCourseList(){
     btn.onclick = async (e) => {
       e.stopPropagation();
       const folderName = btn.getAttribute('data-export-folder');
-      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName);
+      let folderCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === folderName && !c.isFolderPlaceholder);
       let fullFolderData = [];
       for (const cMeta of folderCourses) {
         const fullC = await Backend.getCourse(cMeta.id);
@@ -1619,8 +1654,8 @@ const btnSyncUnp = document.getElementById('btn-sync-unp');
                   const folderEls = listEl.querySelectorAll('.draggable-folder');
                   folderEls.forEach((el, index) => {
                       const fName = el.getAttribute('data-folder-name');
-                      let fCourses = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
-                      fCourses.forEach(fc => {
+                      let fCoursesAll = appState.coursesIndex.filter(c => (c.folder || 'General') === fName);
+                      fCoursesAll.forEach(fc => {
                           if (fc.folderOrderIndex !== index) {
                               fc.folderOrderIndex = index;
                               firestoreDb.collection('cursos').doc(fc.id).update({ folderOrderIndex: index }).catch(()=>{});
