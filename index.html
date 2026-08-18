@@ -22,7 +22,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-firestore-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.16.0/firebase-auth-compat.min.js"></script>
-<!-- SortableJS para Drag & Drop Físico y Premium -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 
 <style>
@@ -295,7 +294,7 @@
   .save-flag{font-family:var(--mono);font-size:10px;color:var(--success);letter-spacing:.5px;opacity:0;transition:opacity .3s;font-weight:700;}
   .save-flag.show{opacity:1;}
 
-  /* --- Nuevo Toolbar Premium --- */
+  /* --- Nuevo Toolbar Premium (Sin Emojis) --- */
   .toolbar-panel {
       display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
       margin-bottom: 20px; background: transparent; padding: 0; border: none;
@@ -328,7 +327,7 @@
       display:flex; justify-content:space-between; align-items:center; background:var(--card); 
       border:1px solid var(--border); border-radius:20px; padding:15px 16px; margin-bottom:10px; 
       transition:border-color .15s;
-      cursor: pointer; /* Hace que toda la fila indique que es clickeable */
+      cursor: pointer;
   }
   .course-row:hover{border-color:rgba(124,92,255,.4);}
   .course-row .name{font-family:var(--display);font-size:15.5px;font-weight:600;}
@@ -530,7 +529,7 @@ function defaultCourse(name, ownerId, folderName = 'General'){
     isPublic: false,
     isDeleted: false,
     deletedAt: null,
-    isFolderPlaceholder: false,
+    isFolderPlaceholder: false, // Permite que las carpetas existan solas
     trabajos: [ { id: uid(), name: 'Trabajo 1', percentage: 100, dropLowest: false, notas: [] } ],
     sustitutorio: { enabled: false, nota: null, forcedTargetId: null },
     createdAt: Date.now(),
@@ -604,7 +603,29 @@ const appState = {
 };
 
 const Backend = {
-async listCourses(){
+  async loadUserPrefs() {
+    if (!appState.currentUser || !firebaseAvailable) return;
+    try {
+        const doc = await firestoreDb.collection('usuarios').doc(appState.currentUser.uid).get();
+        if (doc.exists) {
+            const data = doc.data();
+            if (data.sortBy) appState.sortBy = data.sortBy;
+            if (data.folderSortBy) appState.folderSortBy = data.folderSortBy;
+        }
+    } catch(e){}
+  },
+
+  async saveUserPrefs() {
+    if (!appState.currentUser || !firebaseAvailable) return;
+    try {
+        await firestoreDb.collection('usuarios').doc(appState.currentUser.uid).set({
+            sortBy: appState.sortBy,
+            folderSortBy: appState.folderSortBy
+        }, { merge: true });
+    } catch(e){}
+  },
+
+  async listCourses(){
     if (!appState.currentUser || !firebaseAvailable) return [];
     const snap = await firestoreDb.collection('cursos')
           .where('ownerId', '==', appState.currentUser.uid)
@@ -664,22 +685,21 @@ async listCourses(){
   
   async softDeleteCourse(id){
     if (!firebaseAvailable) return;
-    const fullC = await Backend.getCourse(id);
-    if (fullC) {
-      fullC.isDeleted = true;
-      fullC.deletedAt = Date.now();
-      await Backend.saveCourse(fullC);
-    }
+    // Eliminación súper segura: Se aplica un merge directamente al servidor
+    await firestoreDb.collection('cursos').doc(id).set({
+        isDeleted: true,
+        deletedAt: Date.now()
+    }, { merge: true }).catch(()=>{});
   },
+
   async restoreCourse(id){
     if (!firebaseAvailable) return;
-    const fullC = await Backend.getCourse(id);
-    if (fullC) {
-      fullC.isDeleted = false;
-      fullC.deletedAt = null;
-      await Backend.saveCourse(fullC);
-    }
+    await firestoreDb.collection('cursos').doc(id).set({
+        isDeleted: false,
+        deletedAt: null
+    }, { merge: true }).catch(()=>{});
   },
+
   async deleteCoursePermanent(id){
     if (!firebaseAvailable) return;
     await firestoreDb.collection('cursos').doc(id).delete();
@@ -999,6 +1019,7 @@ function openNewFolderModal() {
     dummyCourse.folderOrderIndex = maxFolderIdx + 1;
     dummyCourse.orderIndex = 0;
     
+    // Inyecta en el menú visual sin tener que abrir el editor
     appState.coursesIndex.push({
         id: dummyCourse.id,
         name: dummyCourse.name,
@@ -1068,6 +1089,7 @@ function openNewCourseModal() {
   const selectEl = document.getElementById('nc-folder-select');
   const inputEl = document.getElementById('nc-new-folder-input');
 
+  // Si no hay carpetas previas, forzamos a que cree una nueva directamente
   if (foldersArr.length === 0) {
       selectEl.value = '__NEW__';
       selectEl.style.display = 'none';
@@ -1153,7 +1175,7 @@ function renderTrashView() {
     appState.trashIndex.forEach(c => {
       let f = c.folder || 'General';
       if (!foldersMap[f]) foldersMap[f] = [];
-      if (!c.isFolderPlaceholder) { 
+      if (!c.isFolderPlaceholder) { // No mostramos los fantasmas
           foldersMap[f].push(c);
       }
     });
@@ -1180,7 +1202,7 @@ function renderTrashView() {
                 <div><div class="name">${escapeHtml(c.name || 'Sin nombre')}</div>
                 <div class="meta"><span class="meta-nf">Nota final: <b>${roundHalfUp(c.totalGrade)}</b></span><span class="meta-sep">|</span><span class="meta-ne">Nota exacta: ${formatNum(c.totalGrade)}</span><span class="meta-sep">|</span><span class="meta-time">Se eliminará en ${daysLeftInTrash(c.deletedAt)}</span></div></div>
                 <div style="display:flex; gap:6px; align-items:center;">
-                  <button class="toolbar-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Restaurar</button>
+                  <button class="io-btn restore-course-btn" data-restore-course="${c.id}" style="padding:4px 8px; font-size:11px; color:var(--success); border-color:rgba(52,229,176,.3);" title="Restaurar asignatura"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Restaurar</button>
                   <button class="icon-btn delete-course-perm-btn" data-del-course-perm="${c.id}" style="color:var(--danger);" title="Eliminar permanentemente"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
               </div>`;
@@ -1286,8 +1308,8 @@ function renderFolderView(folderName) {
           <option value="updated-desc" ${appState.folderSortBy==='updated-desc'?'selected':''}>Recientes</option>
           <option value="name-asc" ${appState.folderSortBy==='name-asc'?'selected':''}>A - Z</option>
           <option value="name-desc" ${appState.folderSortBy==='name-desc'?'selected':''}>Z - A</option>
-          <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Mayor nota</option>
-          <option value="grade-asc" ${appState.folderSortBy==='grade-asc'?'selected':''}>Menor nota</option>
+          <option value="grade-desc" ${appState.folderSortBy==='grade-desc'?'selected':''}>Más nota a menos nota</option>
+          <option value="grade-asc" ${appState.folderSortBy==='grade-asc'?'selected':''}>Menos nota a más nota</option>
         </select>
       </div>
     </div>
@@ -1370,6 +1392,7 @@ function renderFolderView(folderName) {
 
   document.getElementById('folder-sort-select').onchange = (e) => {
     appState.folderSortBy = e.target.value;
+    Backend.saveUserPrefs();
     renderFolderView(folderName);
   };
 
@@ -1416,10 +1439,9 @@ function renderFolderView(folderName) {
       };
   });
 
-  // 👇 AQUÍ ESTÁN LAS LÍNEAS QUE HABÍA BORRADO POR ERROR 👇
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle') || e.target.closest('button')) return;
+      if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle')) return;
       content.innerHTML = `<div class="card empty"><p>Abriendo curso…</p></div>`;
       const course = await Backend.getCourse(el.getAttribute('data-open'));
       if (course){ migrateCourse(course); appState.openCourse = course; render(); }
@@ -1434,7 +1456,6 @@ function renderFolderView(folderName) {
       loadList().then(() => renderFolderView(folderName));
     });
   });
-  // 👆 -------------------------------------------------------- 👆
 
   content.querySelectorAll('[data-export-course]').forEach(btn => {
     btn.onclick = async (e) => {
@@ -1558,7 +1579,6 @@ function renderCourseList(){
     folderNamesKeys.forEach((folderName, fIdx) => {
       let courses = foldersMap[folderName];
       
-      // Aplicar el MISMO orden a las tarjetas para que se refleje lo que elegiste dentro de la carpeta
       courses.sort((a, b) => {
         if (appState.folderSortBy === 'name-asc') return a.name.localeCompare(b.name);
         if (appState.folderSortBy === 'name-desc') return b.name.localeCompare(a.name);
@@ -1621,7 +1641,7 @@ function renderCourseList(){
   `;
   content.innerHTML = html;
 
-  // 👇 LÍNEAS RESTAURADAS 👇
+  // LÍNEAS RESTAURADAS DE CLICS
   content.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', async (e) => {
       if (e.target.closest('[data-del]') || e.target.closest('[data-export-course]') || e.target.closest('.drag-handle') || e.target.closest('button')) return;
@@ -1639,10 +1659,11 @@ function renderCourseList(){
       loadList();
     });
   });
-  // 👆 -------------------- 👆
+  // ============================
 
   document.getElementById('sort-select').onchange = (e) => {
     appState.sortBy = e.target.value;
+    Backend.saveUserPrefs();
     renderCourseList();
   };
 
@@ -1728,7 +1749,7 @@ function renderCourseList(){
 
   content.querySelectorAll('[data-open-folder]').forEach(el => {
     el.onclick = (e) => {
-      if (e.target.closest('.drag-handle') || e.target.closest('button') || e.target.closest('input')) return;
+      if (e.target.closest('.drag-handle') || e.target.closest('button')) return;
       appState.activeFolderView = el.getAttribute('data-open-folder');
       render();
     };
@@ -2513,6 +2534,7 @@ function wireResultsEvents(course) {
 function escapeHtml(str){ return String(str??'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function escapeAttr(str){ return escapeHtml(str); }
 function timeAgo(ts){
+  if (!ts) return '';
   const s = Math.floor((Date.now()-ts)/1000); if (s<60) return 'hace un momento';
   const m = Math.floor(s/60); if (m<60) return `hace ${m} min`;
   const h = Math.floor(m/60); if (h<24) return `hace ${h} h`;
@@ -2542,6 +2564,10 @@ async function init(){
              if (doc.exists && doc.data().isPublic) {
                  appState.openCourse = Object.assign({ id: viewId }, doc.data());
              } else { alert("Este curso es privado o no existe."); window.location.href = window.location.pathname; return;}
+          }
+          
+          if (user && !viewId) {
+              await Backend.loadUserPrefs();
           }
           
           render();
